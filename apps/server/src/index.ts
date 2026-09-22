@@ -1,11 +1,25 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { db } from "@voice-nexus/db";
+import { callsRouter } from "./routes/calls.js";
+import { devRouter } from "./routes/dev.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.use("/api/calls", callsRouter);
+
+// Dev-only OTP console — mounted only when DEMO_MODE=true (ARCHITECTURE.md §10/§17).
+if (process.env.DEMO_MODE === "true") {
+  app.use("/api/dev", devRouter);
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, demoMode: process.env.DEMO_MODE === "true" });
