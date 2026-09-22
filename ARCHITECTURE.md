@@ -58,7 +58,7 @@ Scope: Proof-of-concept demonstrating the complete flow in the spec (ANI capture
 
 | Layer | Choice | Why |
 |---|---|---|
-| AI Conversation Engine | **Claude** (Anthropic API, e.g. Haiku for cost/speed) | Strong structured JSON/tool-call output for slot extraction; you confirmed this. Requires your own `ANTHROPIC_API_KEY` (see §3 — not strictly free-tier). |
+| AI Conversation Engine | **Google Gemini** (free tier) — *switched from Claude 2026-09-23* | Strong structured JSON output for slot extraction. Gemini's free tier is a genuine standing free tier (vs. Claude's starter-credit-only, see §3), which fits the zero-cost-first approach. Requires your own `GEMINI_API_KEY`. |
 | Speech-to-Text | **Browser Web Speech API** | Built into Chrome, zero cost, zero key, streaming. Runs client-side. |
 | Text-to-Speech | **Browser `speechSynthesis`** | Zero cost, zero key, per your choice. |
 | Email OTP delivery | **Resend or Brevo free tier** | Real inbox delivery, no credit card, generous free daily quota. Per your choice. |
