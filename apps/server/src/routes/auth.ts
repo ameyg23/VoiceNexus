@@ -21,17 +21,24 @@ import {
 
 export const authRouter = Router();
 
-const loginSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1) });
+// `identifier` is an email, or — for customers — their account number (BAN100001, or just the 6
+// digits). `email` is still accepted as the field name for older clients.
+const loginSchema = z
+  .object({ identifier: z.string().trim().min(1).optional(), email: z.string().trim().min(1).optional(), password: z.string().min(1) })
+  .transform((b) => ({ identifier: (b.identifier ?? b.email ?? "").toLowerCase(), password: b.password }))
+  .refine((b) => b.identifier.length > 0, "identifier required");
+
+const BAN_RE = /^(?:ban)?\s*(\d{6})$/;
 
 // POST /api/auth/login → { accountType, redirectTo }. Employees are checked first; an email is never
 // both (customer signup refuses employee emails). Same 401 either way, so the response doesn't reveal
-// whether an email exists or which kind of account it is.
+// whether an account exists or which kind it is.
 authRouter.post("/login", (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "enter a valid email and password" });
-  const { email, password } = parsed.data;
+  if (!parsed.success) return res.status(400).json({ error: "enter your email (or account number) and password" });
+  const { identifier, password } = parsed.data;
 
-  const employee = db.prepare(`SELECT id, role, password_hash FROM employees WHERE lower(email) = @email`).get({ "@email": email }) as
+  const employee = db.prepare(`SELECT id, role, password_hash FROM employees WHERE lower(email) = @email`).get({ "@email": identifier }) as
     | { id: number; role: EmployeeRole; password_hash: string }
     | undefined;
   if (employee && verifyPassword(password, employee.password_hash)) {
@@ -40,16 +47,23 @@ authRouter.post("/login", (req, res) => {
     return res.json({ accountType: "employee", redirectTo: "/admin/dashboard" });
   }
 
-  const customer = db
-    .prepare(`SELECT id, portal_password_hash FROM customers WHERE lower(email) = @email AND portal_password_hash IS NOT NULL`)
-    .get({ "@email": email }) as { id: string; portal_password_hash: string } | undefined;
-  if (customer && verifyPassword(password, customer.portal_password_hash)) {
+  // Several demo customers deliberately share one inbox (Resend's sandbox only delivers to the account
+  // owner — CLAUDE.md), so an email can match more than one customer: sign in to the one whose
+  // password matches. A BAN is unique.
+  const banMatch = identifier.match(BAN_RE);
+  const candidates = (
+    banMatch
+      ? db.prepare(`SELECT id, portal_password_hash FROM customers WHERE ban = @ban AND portal_password_hash IS NOT NULL`).all({ "@ban": `BAN${banMatch[1]}` })
+      : db.prepare(`SELECT id, portal_password_hash FROM customers WHERE lower(email) = @email AND portal_password_hash IS NOT NULL`).all({ "@email": identifier })
+  ) as { id: string; portal_password_hash: string }[];
+  const customer = candidates.find((c) => verifyPassword(password, c.portal_password_hash));
+  if (customer) {
     clearEmployeeSession(res);
     setCustomerSession(res, customer.id);
     return res.json({ accountType: "customer", redirectTo: "/portal/account" });
   }
 
-  res.status(401).json({ error: "invalid email or password" });
+  res.status(401).json({ error: "invalid credentials" });
 });
 
 // POST /api/auth/logout — ends whichever session is active.

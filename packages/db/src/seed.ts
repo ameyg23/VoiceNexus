@@ -22,6 +22,8 @@ interface SeedCustomer {
 }
 
 // 9 customers: 3 PIN-only, 3 Email OTP, 3 SMS OTP.
+// Each also gets a website (portal) login: sign in at /login with their email or BAN and
+// "<firstname>-demo-pass" (e.g. BAN100001 / amara-demo-pass) — see portalPassword() below.
 const customers: SeedCustomer[] = [
   {
     id: "CUS001", name: "Amara Okafor", phoneNumber: "+15550101001", ban: "BAN100001", pin: "4821",
@@ -93,17 +95,24 @@ const employees = [
   { name: "Marcus Lee", email: "marcus.lee@voicenexus.demo", password: "agent-demo-pass", role: "AGENT" as const },
 ];
 
+// Demo-only website password, derived so it never needs looking up: first name, lowercased.
+function portalPassword(name: string): string {
+  return `${name.split(" ")[0].toLowerCase()}-demo-pass`;
+}
+
 function main() {
   const db = openDb();
   const insertCustomer = db.prepare(`
     INSERT OR REPLACE INTO customers (
       id, name, phone_number, ban, pin_hash, email, mfa_enabled, mfa_method,
       current_balance, last_payment_amount, last_payment_date, next_billing_due_date,
-      past_due_amount, discount_percent, autopay_enabled, plan_name, account_status
+      past_due_amount, discount_percent, autopay_enabled, plan_name, account_status,
+      portal_password_hash
     ) VALUES (
       @id, @name, @phoneNumber, @ban, @pinHash, @email, @mfaEnabled, @mfaMethod,
       @currentBalance, @lastPaymentAmount, @lastPaymentDate, @nextBillingDueDate,
-      @pastDueAmount, @discountPercent, @autopayEnabled, @planName, @accountStatus
+      @pastDueAmount, @discountPercent, @autopayEnabled, @planName, @accountStatus,
+      @portalPasswordHash
     )
   `);
 
@@ -128,6 +137,7 @@ function main() {
         "@autopayEnabled": c.autopayEnabled ? 1 : 0,
         "@planName": c.planName,
         "@accountStatus": c.accountStatus,
+        "@portalPasswordHash": bcrypt.hashSync(portalPassword(c.name), 10),
       });
     }
     db.exec("COMMIT");
@@ -152,6 +162,7 @@ function main() {
   console.log(`Seeded ${customers.length} customers and ${employees.length} employees.`);
   console.log("PIN-only:", customers.filter((c) => c.mfaMethod === "NONE").map((c) => c.ban).join(", "));
   console.log("Email OTP:", customers.filter((c) => c.mfaMethod === "EMAIL").map((c) => c.ban).join(", "));
+  console.log("Website logins: <email or BAN> / <firstname>-demo-pass, e.g. BAN100001 / amara-demo-pass");
   console.log("SMS OTP:", customers.filter((c) => c.mfaMethod === "SMS").map((c) => c.ban).join(", "));
   db.close();
 }

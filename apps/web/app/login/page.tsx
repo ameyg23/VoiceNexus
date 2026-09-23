@@ -10,7 +10,7 @@ import { AuthLayout, Field, PasswordInput, SubmitButton, inputClass } from "../.
 // their account page based on whose credentials these are.
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,10 +20,10 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { redirectTo } = await login(email, password);
+      const { redirectTo } = await login(identifier.trim(), password);
       router.push(redirectTo);
     } catch (err) {
-      setError(String(err).includes("401") ? "Incorrect email or password." : "Couldn't sign you in right now — please try again.");
+      setError(String(err).includes("401") ? "Incorrect email, account number, or password." : "Couldn't sign you in right now — please try again.");
       setLoading(false);
     }
   }
@@ -41,16 +41,15 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Field label="Email" htmlFor="email">
+        <Field label="Email or account number" htmlFor="identifier">
           <input
-            id="email"
-            type="email"
+            id="identifier"
             required
-            autoComplete="email"
+            autoComplete="username"
             autoFocus
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com or BAN100001"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             className={inputClass}
           />
         </Field>
