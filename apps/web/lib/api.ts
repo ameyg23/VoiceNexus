@@ -71,6 +71,26 @@ export async function fetchDevOtp(conversationId: string): Promise<{ conversatio
   return jsonOrThrow(res);
 }
 
+// --- Unified website sign-in: one form for everyone; the server decides whether the credentials are
+// an employee's (→ ops dashboard) or a customer's (→ account page) and returns where to go. ---
+
+export interface SessionInfo {
+  accountType: "employee" | "customer";
+  redirectTo: string;
+}
+
+export function login(email: string, password: string) {
+  return authFetch<SessionInfo>("/api/auth/login", { email, password });
+}
+
+export function logout() {
+  return authFetch<{ ok: true }>("/api/auth/logout", {});
+}
+
+export function fetchSession() {
+  return authFetch<SessionInfo>("/api/auth/session");
+}
+
 // --- Employee (admin/ops) auth — httpOnly cookie session, separate from customer auth below. ---
 
 export interface EmployeeAccount {

@@ -24,10 +24,11 @@ const signupSchema = z.object({
   password: z.string().min(8, "password must be at least 8 characters"),
 });
 
-// POST /api/auth/employee/signup — single-company employee signup (no invite flow for this POC;
-// see CLAUDE.md "Key decisions" — every signup gets ADMIN since there's no team-management UI yet
-// to promote/demote AGENT/VIEWER accounts).
-employeeAuthRouter.post("/signup", (req, res) => {
+// POST /api/auth/employee/signup — creates another employee (ADMIN — there's no role-management UI).
+// Requires an existing employee session: the website's public signup (/signup) creates customer
+// accounts, so anonymous visitors must not be able to mint admins. Doesn't switch the caller's
+// own session to the new account.
+employeeAuthRouter.post("/signup", requireEmployeeAuth, (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -41,7 +42,6 @@ employeeAuthRouter.post("/signup", (req, res) => {
     .run({ "@name": name, "@email": email, "@hash": passwordHash });
 
   const employeeId = Number(result.lastInsertRowid);
-  setEmployeeSession(res, employeeId, "ADMIN");
   res.status(201).json({ employee: { id: employeeId, name, email, role: "ADMIN" } });
 });
 

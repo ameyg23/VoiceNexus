@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { employeeLogout, employeeMe, type EmployeeAccount } from "../lib/api";
+import { logout, employeeMe, type EmployeeAccount } from "../lib/api";
 import { Sidebar } from "./Sidebar";
 
-// Every /admin page (except login/signup) renders inside this: it checks the employee session once,
-// bounces to /admin/login if there isn't one, and lays out the sidebar + page header. The server
+// Every /admin page renders inside this: it checks the employee session once,
+// bounces to /login if there isn't one, and lays out the sidebar + page header. The server
 // independently enforces employee auth on every data endpoint — this is only the UX redirect.
 export function AdminShell({
   title,
@@ -25,12 +25,12 @@ export function AdminShell({
   useEffect(() => {
     employeeMe()
       .then(({ employee }) => setEmployee(employee))
-      .catch(() => router.replace("/admin/login"));
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   async function handleLogout() {
-    await employeeLogout();
-    router.push("/admin/login");
+    await logout();
+    router.push("/login");
   }
 
   if (!employee) {

@@ -14,6 +14,7 @@ import {
   EscalateIcon,
   LinkIcon,
   HeadsetIcon,
+  KeyIcon,
 } from "./icons";
 
 interface NavItem {
@@ -32,6 +33,13 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Integrations", href: "/admin/integrations", icon: LinkIcon },
   { label: "Test Call", href: "/admin/test-call", icon: HeadsetIcon },
   { label: "Settings", href: "/admin/settings", icon: GearIcon },
+];
+
+// Demo Mode tools — employee-only entry points now that the public site is just sign-in/sign-up.
+// Opened in a new tab so the dashboard stays put while you run a simulated call.
+const DEV_TOOLS: NavItem[] = [
+  { label: "Demo call", href: "/demo/call", icon: PhoneIcon },
+  { label: "OTP console", href: "/demo/otp-console", icon: KeyIcon },
 ];
 
 export function Sidebar({
@@ -67,6 +75,24 @@ export function Sidebar({
               <Icon className="h-4 w-4" />
               {item.label}
             </Link>
+          );
+        })}
+
+        <p className="px-3 pb-1 pt-5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Demo tools</p>
+        {DEV_TOOLS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <a
+              key={item.label}
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+              <span className="ml-auto text-xs text-gray-400">↗</span>
+            </a>
           );
         })}
       </nav>

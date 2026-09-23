@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { customerLogout, customerMe, type CustomerAccount } from "../../../lib/api";
+import { logout, customerMe, type CustomerAccount } from "../../../lib/api";
 import { TopBar } from "../../../components/TopBar";
 import { Badge } from "../../../components/Badge";
 
@@ -14,13 +14,13 @@ export default function PortalAccountPage() {
   useEffect(() => {
     customerMe()
       .then(({ customer }) => setCustomer(customer))
-      .catch(() => router.replace("/portal/login"))
+      .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
   }, [router]);
 
   async function handleLogout() {
-    await customerLogout();
-    router.push("/portal/login");
+    await logout();
+    router.push("/login");
   }
 
   if (loading || !customer) {

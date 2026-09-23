@@ -11,7 +11,10 @@ import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import type { EmployeeRole } from "@voice-nexus/shared";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "dev-only-insecure-secret-change-me";
+// Read at call time, not import time: index.ts loads .env after its imports have already evaluated.
+export function jwtSecret(): string {
+  return process.env.JWT_SECRET ?? "dev-only-insecure-secret-change-me";
+}
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const EMPLOYEE_COOKIE = "vn_employee_session";
@@ -47,14 +50,14 @@ function cookieOptions() {
 }
 
 export function setEmployeeSession(res: Response, employeeId: number, role: EmployeeRole) {
-  const token = jwt.sign({ aud: "employee", employeeId, role } satisfies EmployeeTokenPayload, JWT_SECRET, {
+  const token = jwt.sign({ aud: "employee", employeeId, role } satisfies EmployeeTokenPayload, jwtSecret(), {
     expiresIn: "7d",
   });
   res.cookie(EMPLOYEE_COOKIE, token, cookieOptions());
 }
 
 export function setCustomerSession(res: Response, customerId: string) {
-  const token = jwt.sign({ aud: "customer", customerId } satisfies CustomerTokenPayload, JWT_SECRET, {
+  const token = jwt.sign({ aud: "customer", customerId } satisfies CustomerTokenPayload, jwtSecret(), {
     expiresIn: "7d",
   });
   res.cookie(CUSTOMER_COOKIE, token, cookieOptions());
@@ -83,7 +86,7 @@ export function requireEmployeeAuth(req: Request, res: Response, next: NextFunct
   if (!token) return res.status(401).json({ error: "not authenticated" });
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as EmployeeTokenPayload;
+    const payload = jwt.verify(token, jwtSecret()) as EmployeeTokenPayload;
     if (payload.aud !== "employee") throw new Error("wrong audience");
     req.employee = { employeeId: payload.employeeId, role: payload.role };
     next();
@@ -97,7 +100,7 @@ export function requireCustomerAuth(req: Request, res: Response, next: NextFunct
   if (!token) return res.status(401).json({ error: "not authenticated" });
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as CustomerTokenPayload;
+    const payload = jwt.verify(token, jwtSecret()) as CustomerTokenPayload;
     if (payload.aud !== "customer") throw new Error("wrong audience");
     req.customer = { customerId: payload.customerId };
     next();

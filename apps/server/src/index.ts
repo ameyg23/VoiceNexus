@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import { db } from "@voice-nexus/db";
 import { callsRouter } from "./routes/calls.js";
 import { devRouter } from "./routes/dev.js";
+import { authRouter } from "./routes/auth.js";
 import { employeeAuthRouter } from "./routes/employeeAuth.js";
 import { customerAuthRouter } from "./routes/customerAuth.js";
 import { dashboardRouter } from "./routes/dashboard.js";
@@ -25,6 +26,7 @@ app.use(cookieParser());
 app.use(express.json());
 
 app.use("/api/calls", callsRouter);
+app.use("/api/auth", authRouter); // unified website login/logout/session
 app.use("/api/auth/employee", employeeAuthRouter);
 app.use("/api/auth/customer", customerAuthRouter);
 app.use("/api/dashboard", dashboardRouter);

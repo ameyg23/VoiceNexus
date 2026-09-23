@@ -48,7 +48,9 @@ customerAuthRouter.post("/signup", (req, res) => {
   const existing = db
     .prepare(`SELECT id FROM customers WHERE email = @email AND portal_password_hash IS NOT NULL`)
     .get({ "@email": email });
-  if (existing) return res.status(409).json({ error: "a portal account with that email already exists" });
+  // Emails are unique across both account kinds, so the unified /api/auth/login is never ambiguous.
+  const isEmployee = db.prepare(`SELECT id FROM employees WHERE lower(email) = lower(@email)`).get({ "@email": email });
+  if (existing || isEmployee) return res.status(409).json({ error: "an account with that email already exists" });
 
   const id = nextCustomerId();
   const ban = nextBan();
