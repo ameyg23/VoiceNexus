@@ -3,18 +3,28 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { db } from "@voice-nexus/db";
 import { callsRouter } from "./routes/calls.js";
 import { devRouter } from "./routes/dev.js";
+import { employeeAuthRouter } from "./routes/employeeAuth.js";
+import { customerAuthRouter } from "./routes/customerAuth.js";
+import { dashboardRouter } from "./routes/dashboard.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const app = express();
-app.use(cors());
+// credentials:true + an explicit origin (not "*") is required for the browser to send/accept the
+// httpOnly session cookies set by employeeAuth.ts/customerAuth.ts across the :3000 -> :4000 origin gap.
+app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:3000", credentials: true }));
+app.use(cookieParser());
 app.use(express.json());
 
 app.use("/api/calls", callsRouter);
+app.use("/api/auth/employee", employeeAuthRouter);
+app.use("/api/auth/customer", customerAuthRouter);
+app.use("/api/dashboard", dashboardRouter);
 
 // Dev-only OTP console — mounted only when DEMO_MODE=true (ARCHITECTURE.md §10/§17).
 if (process.env.DEMO_MODE === "true") {
@@ -35,6 +45,7 @@ app.get("/api/demo/customers", (_req, res) => {
   const customers = rows.map((c) => ({
     id: c.id,
     name: c.name,
+    phoneNumber: c.phoneNumber, // fake demo data — frontend needs it to simulate ANI on /api/calls/start
     phoneNumberMasked: maskPhoneNumber(c.phoneNumber),
   }));
 

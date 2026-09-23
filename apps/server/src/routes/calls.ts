@@ -1,10 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
+import multer from "multer";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db } from "@voice-nexus/db";
 import { nextConversationId } from "../lib/ids.js";
 import { advanceAuthSession } from "../lib/authStateMachine.js";
 
 export const callsRouter = Router();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RECORDINGS_DIR = path.resolve(__dirname, "../../../../storage/recordings");
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const startSchema = z.object({ demoPhoneNumber: z.string().min(1) });
 
@@ -37,7 +45,7 @@ const turnSchema = z.object({ text: z.string().min(1) });
 
 // POST /api/calls/:id/turn — runs the customer's utterance through the Auth State
 // Machine. Server independently validates every extracted value against the DB.
-callsRouter.post("/:id/turn", (req, res) => {
+callsRouter.post("/:id/turn", async (req, res) => {
   const parsed = turnSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -49,7 +57,7 @@ callsRouter.post("/:id/turn", (req, res) => {
 
   let result;
   try {
-    result = advanceAuthSession(conversationId, parsed.data.text);
+    result = await advanceAuthSession(conversationId, parsed.data.text);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "auth state machine error" });
@@ -58,6 +66,29 @@ callsRouter.post("/:id/turn", (req, res) => {
   appendTurn(conversationId, "AI", result.aiText);
 
   res.json({ aiText: result.aiText, stage: result.stage, authStatus: result.authStatus });
+});
+
+// POST /api/calls/:id/audio — multipart upload of the recorded call audio (ARCHITECTURE.md §13).
+// Stored under storage/recordings/{conversationId}.webm, linked via conversations.audio_path.
+callsRouter.post("/:id/audio", upload.single("audio"), (req, res) => {
+  const conversationId = req.params.id;
+  const conversation = db.prepare(`SELECT id FROM conversations WHERE id = @id`).get({ "@id": conversationId });
+  if (!conversation) return res.status(404).json({ error: "conversation not found" });
+
+  if (!req.file) return res.status(400).json({ error: "no audio file provided (expected field 'audio')" });
+
+  fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+  const fileName = `${conversationId}.webm`;
+  const filePath = path.join(RECORDINGS_DIR, fileName);
+  fs.writeFileSync(filePath, req.file.buffer);
+
+  const audioPath = `storage/recordings/${fileName}`;
+  db.prepare(`UPDATE conversations SET audio_path = @audioPath WHERE id = @id`).run({
+    "@audioPath": audioPath,
+    "@id": conversationId,
+  });
+
+  res.json({ conversationId, audioPath });
 });
 
 // POST /api/calls/:id/end — finalizes conversation, computes duration.

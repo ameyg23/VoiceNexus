@@ -1,8 +1,9 @@
 import { db } from "@voice-nexus/db";
-import type { AuthStage } from "@voice-nexus/shared";
+import type { AuthStage, Intent } from "@voice-nexus/shared";
 import { extractBan, extractPin, extractOtp } from "./extraction.js";
-import { findCustomerByBan, findCustomerById, verifyPin, type CustomerRow } from "./businessLogic.js";
+import { findCustomerByBan, findCustomerById, verifyPin, getIntentResponseData, type CustomerRow } from "./businessLogic.js";
 import { issueOtp, verifyOtp, getDevOtp } from "./otpService.js";
+import { classifyIntentAI, phraseResponseAI } from "./aiEngine.js";
 
 const PIN_MAX_ATTEMPTS = 3;
 
@@ -54,12 +55,24 @@ function markFailed(conversationId: string) {
 const ESCALATION_TEXT =
   "I'm not able to verify your identity on this call, so I'll connect you with a live agent who can help — they'll have everything you've told me so far.";
 
-export function advanceAuthSession(conversationId: string, utterance: string): TurnResult {
+const FAREWELL_RE = /\b(bye|goodbye|that'?s all|nothing else|no thanks|no thank you|i'?m (all )?good|that'?s it)\b/i;
+
+function setDetectedIntent(conversationId: string, intent: Intent) {
+  db.prepare(`UPDATE conversations SET detected_intent = @intent WHERE id = @cid`).run({
+    "@intent": intent,
+    "@cid": conversationId,
+  });
+}
+
+export async function advanceAuthSession(conversationId: string, utterance: string): Promise<TurnResult> {
   const session = loadSession(conversationId);
 
   switch (session.stage) {
     case "AWAITING_INTENT": {
-      // Rule-based placeholder — real intent classification lands Thursday (Claude).
+      // Best-effort intent capture before we even know who's calling — auth still gates any
+      // actual data (ARCHITECTURE.md §1). Extraction failure just means UNKNOWN, never a block.
+      const intent = await classifyIntentAI(utterance);
+      setDetectedIntent(conversationId, intent);
       setStage(conversationId, "AWAITING_BAN");
       return {
         aiText: "Thanks for calling. To pull up your account, can you tell me your account number (BAN)?",
@@ -69,7 +82,7 @@ export function advanceAuthSession(conversationId: string, utterance: string): T
     }
 
     case "AWAITING_BAN": {
-      const ban = extractBan(utterance);
+      const ban = await extractBan(utterance);
       if (!ban) {
         return {
           aiText: "I didn't catch an account number — could you repeat it?",
@@ -99,7 +112,7 @@ export function advanceAuthSession(conversationId: string, utterance: string): T
 
     case "AWAITING_PIN": {
       const customer = requireCustomer(session);
-      const pin = extractPin(utterance);
+      const pin = await extractPin(utterance);
       if (!pin) {
         return { aiText: "Sorry, I didn't catch a PIN — could you say your 4-digit PIN again?", stage: "AWAITING_PIN", authStatus: "PENDING" };
       }
@@ -140,7 +153,7 @@ export function advanceAuthSession(conversationId: string, utterance: string): T
         };
       }
 
-      const code = extractOtp(utterance);
+      const code = await extractOtp(utterance);
       if (!code) {
         return { aiText: "I didn't catch that code — could you read it back to me?", stage: "AWAITING_OTP", authStatus: "PENDING" };
       }
@@ -167,8 +180,27 @@ export function advanceAuthSession(conversationId: string, utterance: string): T
     }
 
     case "AUTHENTICATED": {
+      const customer = requireCustomer(session);
+
+      if (FAREWELL_RE.test(utterance)) {
+        return {
+          aiText: "Thanks for calling — have a great day!",
+          stage: "AUTHENTICATED",
+          authStatus: "SUCCESS",
+        };
+      }
+
+      const intent = await classifyIntentAI(utterance);
+      setDetectedIntent(conversationId, intent);
+
+      // Server decides what data is authorized and fetches it (businessLogic.ts); the AI only
+      // phrases it. If phrasing fails for any reason, fall back to the deterministic template —
+      // the caller still gets a correct answer, just less naturally worded.
+      const { instruction, data, fallbackText } = getIntentResponseData(customer, intent);
+      const phrased = await phraseResponseAI(instruction, data);
+
       return {
-        aiText: "You're verified. (Intent-driven account actions come online Thursday — for now this confirms the auth flow works end to end.)",
+        aiText: phrased ?? fallbackText,
         stage: "AUTHENTICATED",
         authStatus: "SUCCESS",
       };
