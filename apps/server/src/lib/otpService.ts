@@ -4,6 +4,7 @@ import { db } from "@voice-nexus/db";
 import type { OtpMethod } from "@voice-nexus/shared";
 import type { CustomerRow } from "./businessLogic.js";
 import { maskEmail } from "./businessLogic.js";
+import { sendOtpEmail } from "./email.js";
 
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -42,9 +43,12 @@ export function issueOtp(conversationId: string, customer: CustomerRow, method: 
 
   devOtpCache.set(conversationId, code);
 
-  if (method === "EMAIL" && process.env.RESEND_API_KEY) {
-    // TODO(Sat): send via Resend once the account is set up. Deliberately deferred (CLAUDE.md).
-    console.log(`[otp] RESEND_API_KEY set but Resend send not wired yet — falling back to dev console.`);
+  if (method === "EMAIL") {
+    // Fire-and-forget so the caller hears "I've sent a code" immediately; a failed send is logged
+    // in email.ts and the dev console below still has the code.
+    void sendOtpEmail(customer.email, code).then((sent) => {
+      if (sent) console.log(`[otp] emailed code to ${maskEmail(customer.email)} for ${conversationId}`);
+    });
   }
 
   console.log(`[dev-otp] conversation=${conversationId} method=${method} code=${code} (expires ${expiresAt})`);
