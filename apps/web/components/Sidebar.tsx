@@ -2,20 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogoMark, GridIcon, PhoneIcon, GearIcon, ListIcon, LogoutIcon } from "./icons";
+import {
+  LogoMark,
+  GridIcon,
+  PhoneIcon,
+  GearIcon,
+  ListIcon,
+  LogoutIcon,
+  UsersIcon,
+  TargetIcon,
+  EscalateIcon,
+  LinkIcon,
+  HeadsetIcon,
+} from "./icons";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  soon?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: GridIcon },
-  { label: "Calls", href: "/admin/dashboard", icon: PhoneIcon, soon: true },
-  { label: "Reports", href: "/admin/dashboard", icon: ListIcon, soon: true },
-  { label: "Settings", href: "/admin/dashboard", icon: GearIcon, soon: true },
+  { label: "Calls", href: "/admin/calls", icon: PhoneIcon },
+  { label: "Customers", href: "/admin/customers", icon: UsersIcon },
+  { label: "Intents", href: "/admin/intents", icon: TargetIcon },
+  { label: "Escalations", href: "/admin/escalations", icon: EscalateIcon },
+  { label: "Reports", href: "/admin/reports", icon: ListIcon },
+  { label: "Integrations", href: "/admin/integrations", icon: LinkIcon },
+  { label: "Test Call", href: "/admin/test-call", icon: HeadsetIcon },
+  { label: "Settings", href: "/admin/settings", icon: GearIcon },
 ];
 
 export function Sidebar({
@@ -30,35 +46,26 @@ export function Sidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white">
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white">
       <div className="flex items-center gap-2 px-5 py-5">
         <LogoMark className="h-7 w-7" />
         <span className="text-lg font-bold text-gray-900">VoiceNexus</span>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
         {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href && !item.soon;
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
             <Link
               key={item.label}
-              href={item.soon ? "#" : item.href}
-              aria-disabled={item.soon}
-              className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition ${
-                active
-                  ? "bg-blue-50 text-blue-600"
-                  : item.soon
-                    ? "cursor-not-allowed text-gray-300"
-                    : "text-gray-600 hover:bg-gray-50"
+              href={item.href}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                active ? "bg-blue-50 text-blue-600" : "text-gray-600 hover:bg-gray-50"
               }`}
-              onClick={(e) => item.soon && e.preventDefault()}
             >
-              <span className="flex items-center gap-2.5">
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </span>
-              {item.soon && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-400">Sat</span>}
+              <Icon className="h-4 w-4" />
+              {item.label}
             </Link>
           );
         })}

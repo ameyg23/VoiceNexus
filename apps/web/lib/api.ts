@@ -1,4 +1,4 @@
-import type { AuthStage, AuthStatus, EmployeeRole } from "@voice-nexus/shared";
+import type { AuthMethod, AuthStage, AuthStatus, CallOutcome, Channel, EmployeeRole, Intent } from "@voice-nexus/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -106,15 +106,145 @@ export function employeeMe() {
   return authFetch<{ employee: EmployeeAccount }>("/api/auth/employee/me");
 }
 
+// --- Ops dashboard data (employee session required on every call) ---
+
+export interface ConversationSummary {
+  id: string;
+  startTime: string;
+  endTime: string | null;
+  durationSeconds: number | null;
+  ani: string;
+  banProvided: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  authStatus: AuthStatus;
+  authMethod: AuthMethod | null;
+  detectedIntent: Intent | null;
+  status: string;
+  outcome: CallOutcome;
+  escalationReason: EscalationReason | null;
+  channel: Channel;
+  hasAudio: boolean;
+  turnCount: number;
+}
+
+export type EscalationReason = "PIN_LOCKOUT" | "OTP_FAILED" | "VERIFICATION_FAILED";
+
+export interface ConversationDetail {
+  conversation: ConversationSummary;
+  turns: { turnIndex: number; speaker: "AI" | "CUSTOMER"; text: string; timestamp: string }[];
+  authSession: { stage: AuthStage; pinAttempts: number; authenticatedAt: string | null } | null;
+  otps: { method: "EMAIL" | "SMS"; destinationMasked: string; status: string; attempts: number; createdAt: string }[];
+}
+
 export interface DashboardSummary {
-  totalConversations: number;
-  authSuccess: number;
-  authFailed: number;
-  authPending: number;
+  totalCalls: number;
+  resolved: number;
+  escalated: number;
+  abandoned: number;
+  inProgress: number;
+  avgHandleSeconds: number | null;
+  authMethods: { method: AuthMethod; count: number }[];
+  intents: { intent: Intent; count: number }[];
+  recentCalls: ConversationSummary[];
+}
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  ban: string;
+  email: string;
+  mfaMethod: "NONE" | "EMAIL" | "SMS";
+  planName: string;
+  accountStatus: string;
+  currentBalance: number;
+  pastDueAmount: number;
+  lastPaymentAmount: number;
+  lastPaymentDate: string | null;
+  nextBillingDueDate: string | null;
+  autopayEnabled: boolean;
+  discountPercent: number;
+  hasPortalAccount: boolean;
+  createdAt: string;
+  callCount?: number;
+  lastCallAt?: string | null;
+}
+
+export interface ReportsData {
+  callsByDay: { day: string; total: number; resolved: number; escalated: number }[];
+  callsByHour: { hour: number; total: number }[];
+  intentPerformance: { intent: Intent; total: number; resolved: number; escalated: number; abandoned: number }[];
+  handleTime: {
+    overall: { calls: number; avgSeconds: number | null };
+    byOutcome: { outcome: CallOutcome; calls: number; avgSeconds: number | null }[];
+  };
+  funnel: { calls: number; banProvided: number; accountFound: number; verified: number };
+  authMethods: { configured: "NONE" | "EMAIL" | "SMS"; attempted: number; verified: number; failed: number }[];
+  escalationReasons: { reason: EscalationReason; count: number }[];
+  channels: { channel: Channel; count: number }[];
+}
+
+export interface IntentCatalogEntry {
+  intent: Intent;
+  label: string;
+  description: string;
+  examples: string[];
+  dataShared: string[];
+  total: number;
+  resolved: number;
+  escalated: number;
+}
+
+export interface IntegrationsStatus {
+  gemini: { configured: boolean; model: string };
+  resend: { configured: boolean; fromEmail: string | null };
+  twilio: { configured: boolean; careLineNumber: string | null; publicBaseUrl: string | null; voiceSdkConfigured: boolean };
+  demoMode: boolean;
 }
 
 export function fetchDashboardSummary() {
   return authFetch<DashboardSummary>("/api/dashboard/summary");
+}
+
+export function fetchConversations(filters: { q?: string; outcome?: string; intent?: string; channel?: string } = {}) {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][]);
+  const qs = params.toString();
+  return authFetch<{ conversations: ConversationSummary[] }>(`/api/conversations${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchConversation(id: string) {
+  return authFetch<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`);
+}
+
+export function conversationAudioUrl(id: string) {
+  return `${API_URL}/api/conversations/${encodeURIComponent(id)}/audio`;
+}
+
+export function fetchCustomers() {
+  return authFetch<{ customers: CustomerSummary[] }>("/api/customers");
+}
+
+export function fetchCustomer(id: string) {
+  return authFetch<{ customer: CustomerSummary; conversations: ConversationSummary[]; stats: { total: number; resolved: number; escalated: number } }>(
+    `/api/customers/${encodeURIComponent(id)}`
+  );
+}
+
+export function fetchReports() {
+  return authFetch<ReportsData>(`/api/dashboard/reports?tzOffset=${new Date().getTimezoneOffset()}`);
+}
+
+export function fetchIntents() {
+  return authFetch<{ intents: IntentCatalogEntry[] }>("/api/dashboard/intents");
+}
+
+export function fetchIntegrations() {
+  return authFetch<IntegrationsStatus>("/api/dashboard/integrations");
+}
+
+export function fetchVoiceToken() {
+  return authFetch<{ token: string; careLineNumber: string | null }>("/api/twilio/token");
 }
 
 // --- Customer portal auth — separate httpOnly cookie session; unrelated to the phone-call

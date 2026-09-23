@@ -1,80 +1,81 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { employeeLogout, employeeMe, fetchDashboardSummary, type DashboardSummary, type EmployeeAccount } from "../../../lib/api";
-import { Sidebar } from "../../../components/Sidebar";
-import { Badge } from "../../../components/Badge";
+import Link from "next/link";
+import { fetchDashboardSummary, type DashboardSummary } from "../../../lib/api";
+import { AdminShell, Card, ErrorNote, StatTile } from "../../../components/AdminShell";
+import { BarList, StackedBar, OUTCOME_COLORS } from "../../../components/charts";
+import { CallsTable } from "../../../components/CallsTable";
+import { AUTH_METHOD_LABELS, formatDuration, intentLabel, percent } from "../../../lib/format";
 
 export default function AdminDashboardPage() {
-  const router = useRouter();
-  const [employee, setEmployee] = useState<EmployeeAccount | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    employeeMe()
-      .then(({ employee }) => {
-        setEmployee(employee);
-        return fetchDashboardSummary();
-      })
+    fetchDashboardSummary()
       .then(setSummary)
-      .catch(() => router.replace("/admin/login"))
-      .finally(() => setLoading(false));
-  }, [router]);
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, []);
 
-  async function handleLogout() {
-    await employeeLogout();
-    router.push("/admin/login");
-  }
-
-  if (loading || !employee) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-gray-400">Loading…</div>;
-  }
-
-  const authRate =
-    summary && summary.totalConversations > 0 ? Math.round((summary.authSuccess / summary.totalConversations) * 100) : 0;
+  const s = summary;
+  const finished = s ? s.totalCalls - s.inProgress : 0;
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} />
-      <main className="flex-1 px-8 py-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard overview</h1>
-        <p className="mt-1 text-sm text-gray-500">Live snapshot from every call so far.</p>
+    <AdminShell title="Dashboard overview" subtitle="Live snapshot from every call so far.">
+      <ErrorNote error={error} />
+      {s && (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            <StatTile label="Total calls" value={s.totalCalls} hint={`${s.inProgress} in progress`} />
+            <StatTile label="Containment rate" value={percent(s.resolved, finished)} hint={`${s.resolved} of ${finished} resolved by AI`} />
+            <StatTile label="Escalated" value={s.escalated} hint={`${percent(s.escalated, finished)} of finished calls`} />
+            <StatTile label="Abandoned" value={s.abandoned} hint="Ended before verification" />
+            <StatTile label="Avg handle time" value={formatDuration(s.avgHandleSeconds)} hint="Calls with a recorded end" />
+          </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <KpiTile label="Total Calls" value={summary?.totalConversations ?? 0} />
-          <KpiTile label="Authenticated" value={summary?.authSuccess ?? 0} tone="success" />
-          <KpiTile label="Auth Failed" value={summary?.authFailed ?? 0} tone="danger" />
-          <KpiTile label="In Progress" value={summary?.authPending ?? 0} tone="neutral" />
-        </div>
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card title="Call outcomes" subtitle="Every call, by how it ended">
+              <StackedBar
+                segments={[
+                  { label: "Resolved", value: s.resolved, color: OUTCOME_COLORS.RESOLVED },
+                  { label: "Escalated", value: s.escalated, color: OUTCOME_COLORS.ESCALATED },
+                  { label: "Abandoned", value: s.abandoned, color: OUTCOME_COLORS.ABANDONED },
+                  { label: "In progress", value: s.inProgress, color: OUTCOME_COLORS.IN_PROGRESS },
+                ]}
+              />
+              <div className="mt-6 border-t border-gray-100 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Verified by</p>
+                <div className="mt-3">
+                  {s.authMethods.length === 0 ? (
+                    <p className="text-sm text-gray-500">No verified calls yet.</p>
+                  ) : (
+                    <BarList data={s.authMethods.map((m) => ({ label: AUTH_METHOD_LABELS[m.method] ?? m.method, value: m.count }))} />
+                  )}
+                </div>
+              </div>
+            </Card>
 
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900">Auth success rate</h2>
-          <p className="mt-1 text-3xl font-bold text-gray-900">{authRate}%</p>
-          <p className="mt-1 text-sm text-gray-500">
-            {summary?.authSuccess ?? 0} of {summary?.totalConversations ?? 0} calls authenticated
-          </p>
-        </div>
+            <Card title="Intents distribution" subtitle="Primary intent detected per call">
+              {s.intents.length === 0 ? (
+                <p className="text-sm text-gray-500">No intents detected yet.</p>
+              ) : (
+                <BarList
+                  data={s.intents.map((i) => ({ label: intentLabel(i.intent), value: i.count }))}
+                  valueFormat={(v) => `${v} · ${percent(v, s.totalCalls)}`}
+                />
+              )}
+            </Card>
+          </div>
 
-        <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-400">
-          Calls list, Intents, Escalations, Reports, and Integrations land Saturday — see the sidebar.
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function KpiTile({ label, value, tone }: { label: string; value: number; tone?: "success" | "danger" | "neutral" }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
-      {tone && (
-        <div className="mt-2">
-          <Badge tone={tone}>{tone === "success" ? "Good" : tone === "danger" ? "Needs review" : "Ongoing"}</Badge>
-        </div>
+          <Card className="mt-6" title="Recent calls">
+            <CallsTable calls={s.recentCalls} />
+            <Link href="/admin/calls" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
+              View all calls →
+            </Link>
+          </Card>
+        </>
       )}
-    </div>
+    </AdminShell>
   );
 }

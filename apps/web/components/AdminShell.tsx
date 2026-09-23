@@ -1,0 +1,84 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { employeeLogout, employeeMe, type EmployeeAccount } from "../lib/api";
+import { Sidebar } from "./Sidebar";
+
+// Every /admin page (except login/signup) renders inside this: it checks the employee session once,
+// bounces to /admin/login if there isn't one, and lays out the sidebar + page header. The server
+// independently enforces employee auth on every data endpoint — this is only the UX redirect.
+export function AdminShell({
+  title,
+  subtitle,
+  actions,
+  children,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
+  const [employee, setEmployee] = useState<EmployeeAccount | null>(null);
+
+  useEffect(() => {
+    employeeMe()
+      .then(({ employee }) => setEmployee(employee))
+      .catch(() => router.replace("/admin/login"));
+  }, [router]);
+
+  async function handleLogout() {
+    await employeeLogout();
+    router.push("/admin/login");
+  }
+
+  if (!employee) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-gray-400">Loading…</div>;
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} />
+      <main className="min-w-0 flex-1 px-8 py-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+          </div>
+          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        </div>
+        <div className="mt-6">{children}</div>
+      </main>
+    </div>
+  );
+}
+
+export function Card({ title, subtitle, children, className = "" }: { title?: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`}>
+      {title && <h2 className="text-sm font-semibold text-gray-900">{title}</h2>}
+      {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+      <div className={title || subtitle ? "mt-4" : ""}>{children}</div>
+    </section>
+  );
+}
+
+export function StatTile({ label, value, hint }: { label: string; value: React.ReactNode; hint?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-gray-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
+      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+    </div>
+  );
+}
+
+export function EmptyState({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">{children}</div>;
+}
+
+export function ErrorNote({ error }: { error: string | null }) {
+  if (!error) return null;
+  return <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+}
