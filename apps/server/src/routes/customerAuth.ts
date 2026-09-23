@@ -5,6 +5,9 @@ import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
 import type { CustomerRow } from "../lib/businessLogic.js";
+import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
+import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
+import { getSettings } from "../lib/settings.js";
 
 export const customerAuthRouter = Router();
 
@@ -104,6 +107,39 @@ customerAuthRouter.post("/login", (req, res) => {
 customerAuthRouter.post("/logout", (_req, res) => {
   clearCustomerSession(res);
   res.json({ ok: true });
+});
+
+// GET /api/auth/customer/activity — the signed-in customer's own bookings, account changes and recent
+// calls, for the self-service portal. Scoped strictly to req.customer; no transcripts or internal notes.
+customerAuthRouter.get("/activity", requireCustomerAuth, (req, res) => {
+  const customerId = req.customer!.customerId;
+  const actions = db
+    .prepare(`SELECT * FROM call_actions WHERE customer_id = @id AND status <> 'CANCELLED' ORDER BY id DESC LIMIT 50`)
+    .all({ "@id": customerId }) as unknown as CallActionRow[];
+  const view = (a: CallActionRow) => ({
+    id: a.id,
+    type: a.type,
+    status: a.status,
+    scheduledFor: a.scheduled_for,
+    window: (safeJson(a.details).windowLabel as string | undefined) ?? null,
+    description: describeAction(a),
+    createdAt: sqliteUtcToIso(a.created_at),
+  });
+  const calls = db
+    .prepare(
+      `SELECT c.id, c.start_time as startTime, c.detected_intent as intent, ${OUTCOME_SQL} as outcome
+       FROM conversations c WHERE c.customer_id = @id ORDER BY c.start_time DESC LIMIT 5`
+    )
+    .all({ "@id": customerId });
+  const s = getSettings();
+  res.json({
+    upcoming: actions.filter((a) => a.status === "SCHEDULED").map(view),
+    history: actions.filter((a) => a.status !== "SCHEDULED").slice(0, 10).map(view),
+    recentCalls: calls,
+    brandName: s.brandName,
+    assistantName: s.assistantName,
+    careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null,
+  });
 });
 
 customerAuthRouter.get("/me", requireCustomerAuth, (req, res) => {

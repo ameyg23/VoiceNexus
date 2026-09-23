@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { logout, employeeMe, type EmployeeAccount } from "../lib/api";
 import { Sidebar } from "./Sidebar";
+import { LogoMark, MenuIcon } from "./icons";
 
 // Every /admin page renders inside this: it checks the employee session once,
 // bounces to /login if there isn't one, and lays out the sidebar + page header. The server
@@ -21,6 +22,7 @@ export function AdminShell({
 }) {
   const router = useRouter();
   const [employee, setEmployee] = useState<EmployeeAccount | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     employeeMe()
@@ -39,24 +41,34 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} />
-      <main className="min-w-0 flex-1 px-8 py-8">
+      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} open={menuOpen} onClose={() => setMenuOpen(false)} />
+      {menuOpen && <div className="fixed inset-0 z-30 bg-gray-900/30 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+          <button onClick={() => setMenuOpen(true)} className="rounded-lg p-2 text-gray-600 hover:bg-gray-100" aria-label="Open menu">
+            <MenuIcon className="h-5 w-5" />
+          </button>
+          <LogoMark className="h-6 w-6" />
+          <span className="font-bold text-gray-900">VoiceNexus</span>
+        </header>
+      <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{title}</h1>
             {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </div>
         <div className="mt-6">{children}</div>
       </main>
+      </div>
     </div>
   );
 }
 
 export function Card({ title, subtitle, children, className = "" }: { title?: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`}>
+    <section className={`min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 ${className}`}>
       {title && <h2 className="text-sm font-semibold text-gray-900">{title}</h2>}
       {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
       <div className={title || subtitle ? "mt-4" : ""}>{children}</div>

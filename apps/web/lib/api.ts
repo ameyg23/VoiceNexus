@@ -459,6 +459,29 @@ export function customerLogout() {
   return authFetch<{ ok: true }>("/api/auth/customer/logout", {});
 }
 
+export interface CustomerActivityItem {
+  id: number;
+  type: CallActionType;
+  status: CallActionStatus;
+  scheduledFor: string | null;
+  window: string | null;
+  description: string;
+  createdAt: string;
+}
+
+export interface CustomerActivity {
+  upcoming: CustomerActivityItem[];
+  history: CustomerActivityItem[];
+  recentCalls: { id: string; startTime: string; intent: Intent | null; outcome: CallOutcome }[];
+  brandName: string;
+  assistantName: string;
+  careLineNumber: string | null;
+}
+
+export function customerActivity() {
+  return authFetch<CustomerActivity>("/api/auth/customer/activity");
+}
+
 export function customerMe() {
   return authFetch<{ customer: CustomerAccount }>("/api/auth/customer/me");
 }

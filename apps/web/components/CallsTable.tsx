@@ -34,14 +34,14 @@ export function CallsTable({ calls, showCustomer = true, empty = "No calls yet."
               onClick={() => router.push(`/admin/calls/${c.id}`)}
               className="cursor-pointer border-b border-gray-100 transition hover:bg-gray-50"
             >
-              <td className="py-3 pr-4 font-semibold text-gray-900">
+              <td className="whitespace-nowrap py-3 pr-4 font-semibold text-gray-900">
                 <Link href={`/admin/calls/${c.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-blue-600">
                   {c.id}
                 </Link>
                 {c.channel === "PHONE" && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">PHONE</span>}
               </td>
               <td className="whitespace-nowrap py-3 pr-4 text-gray-600">{formatDateTime(c.startTime)}</td>
-              <td className="py-3 pr-4 text-gray-600 tabular-nums">{c.ani}</td>
+              <td className="whitespace-nowrap py-3 pr-4 text-gray-600 tabular-nums">{c.ani}</td>
               {showCustomer && <td className="py-3 pr-4 text-gray-600">{c.customerName ?? "—"}</td>}
               <td className="py-3 pr-4 text-gray-600">{intentLabel(c.detectedIntent)}</td>
               <td className="py-3 pr-4 text-gray-600">{c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "—"}</td>

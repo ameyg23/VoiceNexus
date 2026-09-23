@@ -44,22 +44,39 @@ const DEV_TOOLS: NavItem[] = [
   { label: "OTP console", href: "/demo/otp-console", icon: KeyIcon },
 ];
 
+// Pinned on laptop widths; below that it's an off-canvas drawer opened from the shell's top bar.
 export function Sidebar({
   orgName,
   employeeName,
   onLogout,
+  open = false,
+  onClose,
 }: {
   orgName: string;
   employeeName: string;
   onLogout: () => void;
+  open?: boolean;
+  onClose?: () => void;
 }) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white">
-      <div className="flex items-center gap-2 px-5 py-5">
-        <LogoMark className="h-7 w-7" />
-        <span className="text-lg font-bold text-gray-900">VoiceNexus</span>
+    <aside
+      className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 shrink-0 flex-col border-r border-gray-200 bg-white shadow-xl transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-60 lg:translate-x-0 lg:shadow-none ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
+      aria-label="Main navigation"
+    >
+      <div className="flex items-center justify-between gap-2 px-5 py-5">
+        <span className="flex items-center gap-2">
+          <LogoMark className="h-7 w-7" />
+          <span className="text-lg font-bold text-gray-900">VoiceNexus</span>
+        </span>
+        {onClose && (
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 lg:hidden" aria-label="Close menu">
+            ✕
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3">
@@ -70,6 +87,7 @@ export function Sidebar({
             <Link
               key={item.label}
               href={item.href}
+              onClick={onClose}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
                 active ? "bg-blue-50 text-blue-600" : "text-gray-600 hover:bg-gray-50"
               }`}

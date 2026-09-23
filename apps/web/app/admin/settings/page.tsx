@@ -319,9 +319,9 @@ function Rows({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
     <dl className="space-y-2.5 text-sm">
       {rows.map(([k, v]) => (
-        <div key={k} className="grid grid-cols-[10rem_1fr] gap-4">
+        <div key={k} className="grid gap-0.5 sm:grid-cols-[10rem_1fr] sm:gap-4">
           <dt className="text-gray-500">{k}</dt>
-          <dd className="text-gray-900">{v}</dd>
+          <dd className="break-words text-gray-900">{v}</dd>
         </div>
       ))}
     </dl>

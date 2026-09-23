@@ -80,12 +80,12 @@ export function BarList({ data, valueFormat = (v: number) => String(v), max: max
   return (
     <div className="space-y-2.5">
       {data.map((d) => (
-        <div key={d.label} className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 text-sm" title={d.detail}>
-          <span className="truncate text-gray-700">{d.label}</span>
+        <div key={d.label} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 text-sm" title={d.detail}>
+          <span className="leading-tight text-gray-700">{d.label}</span>
           <div className="h-4">
             <div className="h-full rounded-r" style={{ width: `${Math.max(d.value > 0 ? 1.5 : 0, (d.value / max) * 100)}%`, background: SERIES }} />
           </div>
-          <span className="w-16 text-right text-gray-900 tabular-nums">{valueFormat(d.value)}</span>
+          <span className="min-w-10 whitespace-nowrap text-right text-gray-900 tabular-nums">{valueFormat(d.value)}</span>
         </div>
       ))}
     </div>

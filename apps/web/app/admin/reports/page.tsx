@@ -53,7 +53,8 @@ export default function ReportsPage() {
             <Card title="Calls by hour of day" subtitle="All time, your local time">
               <ColumnChart
                 data={data.callsByHour.map((h) => ({
-                  label: new Date(2000, 0, 1, h.hour).toLocaleTimeString(undefined, { hour: "numeric" }),
+                  // Compact axis labels ("12a", "3p") so every tick fits.
+                  label: `${h.hour % 12 === 0 ? 12 : h.hour % 12}${h.hour < 12 ? "a" : "p"}`,
                   value: h.total,
                 }))}
               />
