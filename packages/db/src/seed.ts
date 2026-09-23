@@ -22,8 +22,8 @@ interface SeedCustomer {
 }
 
 // 9 customers: 3 PIN-only, 3 Email OTP, 3 SMS OTP.
-// Each also gets a website (portal) login: sign in at /login with their email or BAN and
-// "<firstname>-demo-pass" (e.g. BAN100001 / amara-demo-pass) — see portalPassword() below.
+// Each also gets a website (portal) login: sign in at /login with their email and
+// "<firstname>-demo-pass" (e.g. amara.okafor@example.com / amara-demo-pass) — see portalPassword().
 const customers: SeedCustomer[] = [
   {
     id: "CUS001", name: "Amara Okafor", phoneNumber: "+15550101001", ban: "BAN100001", pin: "4821",
@@ -162,7 +162,7 @@ function main() {
   console.log(`Seeded ${customers.length} customers and ${employees.length} employees.`);
   console.log("PIN-only:", customers.filter((c) => c.mfaMethod === "NONE").map((c) => c.ban).join(", "));
   console.log("Email OTP:", customers.filter((c) => c.mfaMethod === "EMAIL").map((c) => c.ban).join(", "));
-  console.log("Website logins: <email or BAN> / <firstname>-demo-pass, e.g. BAN100001 / amara-demo-pass");
+  console.log("Website logins: <email> / <firstname>-demo-pass, e.g. amara.okafor@example.com / amara-demo-pass");
   console.log("SMS OTP:", customers.filter((c) => c.mfaMethod === "SMS").map((c) => c.ban).join(", "));
   db.close();
 }
