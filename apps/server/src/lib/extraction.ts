@@ -1,7 +1,7 @@
-// Slot extraction: Gemini-based (Thursday — ARCHITECTURE.md roadmap step 3), falling back to the
-// original regex placeholder if the AI call is unavailable or returns nothing (missing API key,
-// network error, ambiguous utterance). The server still independently validates whatever is
-// extracted against the DB either way — swapping extraction strategy never changes that contract.
+// Slot extraction. For BAN / PIN / OTP the deterministic parser runs first — digits said or keyed
+// plainly ("100001", "4 8 2 1") need no AI round-trip, which keeps those turns fast — and Gemini
+// handles the rest (number words, filler, "B as in boy"). The server still independently validates
+// whatever is extracted against the DB either way — the extraction strategy never changes that.
 
 import type { Intent } from "@voice-nexus/shared";
 import { extractBanAI, extractPinAI, extractOtpAI, classifyIntentAI, classifyYesNoAI, extractDateAI, extractPlanAI } from "./aiEngine.js";
@@ -9,18 +9,15 @@ import { parseSpokenDate, toIsoDate, todayLocal } from "./dates.js";
 import { PLAN_CATALOG, findPlan, matchPlanFromText, type PlanInfo } from "./businessLogic.js";
 
 export async function extractBan(text: string): Promise<string | null> {
-  const ai = await extractBanAI(text);
-  return ai ?? extractBanRegex(text);
+  return extractBanRegex(text) ?? (await extractBanAI(text));
 }
 
 export async function extractPin(text: string): Promise<string | null> {
-  const ai = await extractPinAI(text);
-  return ai ?? extractPinRegex(text);
+  return extractPinRegex(text) ?? (await extractPinAI(text));
 }
 
 export async function extractOtp(text: string): Promise<string | null> {
-  const ai = await extractOtpAI(text);
-  return ai ?? extractOtpRegex(text);
+  return extractOtpRegex(text) ?? (await extractOtpAI(text));
 }
 
 // Phone speech-to-text often spaces or hyphenates digits read one at a time ("1 0 0 0 0 2",
@@ -34,7 +31,7 @@ function joinSpokenDigits(text: string): string {
 // caller is still served during an AI outage instead of looping on "could you clarify".
 export const MENU: { digit: string; intent: Intent; label: string }[] = [
   { digit: "1", intent: "CHECK_BALANCE", label: "your balance" },
-  { digit: "2", intent: "MAKE_PAYMENT", label: "to make a payment" },
+  { digit: "2", intent: "MAKE_PAYMENT", label: "a payment" },
   { digit: "3", intent: "BILLING_DUE_DATE", label: "your bill due date" },
   { digit: "4", intent: "PLAN_CHANGE", label: "plan options" },
   { digit: "5", intent: "TECH_TRIAGE", label: "internet or TV problems" },

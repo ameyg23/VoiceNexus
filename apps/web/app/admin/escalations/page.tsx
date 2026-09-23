@@ -1,34 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { fetchConversations, type ConversationSummary, type EscalationReason } from "../../../lib/api";
-import { AdminShell, Card, EmptyState, ErrorNote, StatTile } from "../../../components/AdminShell";
+import Link from "next/link";
+import { acceptEscalation, fetchEscalations, resolveEscalation, type Escalation } from "../../../lib/api";
+import { AdminShell, EmptyState, ErrorNote, StatTile } from "../../../components/AdminShell";
 import { Badge } from "../../../components/Badge";
-import { ESCALATION_REASON_LABELS, formatDateTime, intentLabel } from "../../../lib/format";
+import { CheckIcon } from "../../../components/icons";
+import { ESCALATION_REASON_LABELS, ESCALATION_STATUS_TONES, formatDateTime, intentLabel } from "../../../lib/format";
 
-// Today the only escalation path is failed caller verification (PIN lockout / OTP exhausted) — the AI
-// ends with a live-agent handoff message. There's no agent routing system in this POC, so this is a
-// log of handoffs for follow-up rather than a live accept-a-call queue.
+type Tab = "OPEN" | "RESOLVED" | "ALL";
+
+// Live-agent escalation queue (PRD VN-5). Each handoff carries the assistant's structured context —
+// identity status, intent, what was already attempted — so the agent doesn't start from scratch.
 export default function EscalationsPage() {
-  const router = useRouter();
-  const [calls, setCalls] = useState<ConversationSummary[] | null>(null);
+  const [tab, setTab] = useState<Tab>("OPEN");
+  const [items, setItems] = useState<Escalation[] | null>(null);
+  const [all, setAll] = useState<Escalation[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetchConversations({ outcome: "ESCALATED" })
-      .then(({ conversations }) => setCalls(conversations))
+    fetchEscalations()
+      .then(({ escalations }) => {
+        setAll(escalations);
+        setItems(escalations.filter((e) => (tab === "ALL" ? true : tab === "OPEN" ? e.status !== "RESOLVED" : e.status === "RESOLVED")));
+        setError(null);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
+  }, [tab]);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 10_000); // live queue
+    return () => clearInterval(t);
+  }, [load]);
 
-  const byReason = (reason: EscalationReason) => calls?.filter((c) => c.escalationReason === reason).length ?? 0;
+  const count = (pred: (e: Escalation) => boolean) => all.filter(pred).length;
 
   return (
     <AdminShell
-      title="Escalations"
-      subtitle="Calls the AI handed off to a live agent after verification failed."
+      title="Escalation queue"
+      subtitle="Calls the assistant handed to a live agent, with the context it captured."
       actions={
         <button onClick={load} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
           ↻ Refresh
@@ -37,48 +48,116 @@ export default function EscalationsPage() {
     >
       <ErrorNote error={error} />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="Total escalated" value={calls?.length ?? "—"} />
-        <StatTile label="PIN lockout" value={calls ? byReason("PIN_LOCKOUT") : "—"} />
-        <StatTile label="OTP exhausted" value={calls ? byReason("OTP_FAILED") : "—"} />
-        <StatTile label="Other verification failure" value={calls ? byReason("VERIFICATION_FAILED") : "—"} />
+        <StatTile label="Waiting" value={count((e) => e.status === "WAITING")} hint="Not yet picked up" />
+        <StatTile label="In progress" value={count((e) => e.status === "ACCEPTED")} hint="Accepted by an agent" />
+        <StatTile label="Resolved" value={count((e) => e.status === "RESOLVED")} />
+        <StatTile label="Identity verified" value={all.length ? `${count((e) => e.verified)} of ${all.length}` : "—"} hint="Agent can skip re-verification" />
       </div>
 
-      <Card className="mt-6" title="Handoff log">
-        {!calls ? (
+      <div className="mt-6 flex gap-1 rounded-lg bg-gray-100 p-1 text-sm font-medium sm:w-fit">
+        {(["OPEN", "RESOLVED", "ALL"] as Tab[]).map((t) => (
+          <button key={t} onClick={() => setTab(t)} className={`rounded-md px-4 py-1.5 ${tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            {t === "OPEN" ? "Open" : t === "RESOLVED" ? "Resolved" : "All"}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {!items ? (
           <p className="text-sm text-gray-400">Loading…</p>
-        ) : calls.length === 0 ? (
-          <EmptyState>No escalations — every caller who got as far as verification passed it.</EmptyState>
+        ) : items.length === 0 ? (
+          <EmptyState>{tab === "OPEN" ? "No one is waiting for an agent." : "Nothing here yet."}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <th className="py-3 pr-4">Call ID</th>
-                  <th className="py-3 pr-4">Time</th>
-                  <th className="py-3 pr-4">Caller number</th>
-                  <th className="py-3 pr-4">Account</th>
-                  <th className="py-3 pr-4">Intent</th>
-                  <th className="py-3 pr-4">Escalation reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((c) => (
-                  <tr key={c.id} onClick={() => router.push(`/admin/calls/${c.id}`)} className="cursor-pointer border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 pr-4 font-semibold text-gray-900">{c.id}</td>
-                    <td className="whitespace-nowrap py-3 pr-4 text-gray-600">{formatDateTime(c.startTime)}</td>
-                    <td className="py-3 pr-4 text-gray-600 tabular-nums">{c.ani}</td>
-                    <td className="py-3 pr-4 text-gray-600">{c.banProvided ?? "—"}</td>
-                    <td className="py-3 pr-4 text-gray-600">{intentLabel(c.detectedIntent)}</td>
-                    <td className="py-3 pr-4">
-                      <Badge tone="danger">{c.escalationReason ? ESCALATION_REASON_LABELS[c.escalationReason] : "—"}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          items.map((e) => <EscalationCard key={e.id} e={e} onChange={load} onError={setError} />)
         )}
-      </Card>
+      </div>
     </AdminShell>
+  );
+}
+
+function EscalationCard({ e, onChange, onError }: { e: Escalation; onChange: () => void; onError: (m: string) => void }) {
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await action();
+      onChange();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={`/admin/calls/${e.conversationId}`} className="font-semibold text-gray-900 hover:text-blue-600">
+              {e.conversationId}
+            </Link>
+            <Badge tone={ESCALATION_STATUS_TONES[e.status]}>{e.status === "ACCEPTED" ? `Accepted${e.acceptedByName ? ` by ${e.acceptedByName}` : ""}` : e.status.toLowerCase()}</Badge>
+            <Badge tone={e.verified ? "success" : "warning"}>{e.verified ? "Identity verified" : "Not verified"}</Badge>
+            <Badge tone="danger">{ESCALATION_REASON_LABELS[e.reason] ?? e.reason}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {formatDateTime(e.createdAt)} · {e.customerName ?? "Unidentified caller"}
+            {e.banProvided ? ` · ${e.banProvided}` : ""} · {e.ani} · wants: {intentLabel(e.intent)}
+          </p>
+        </div>
+        {e.status === "WAITING" && (
+          <button
+            disabled={busy}
+            onClick={() => void run(() => acceptEscalation(e.id))}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            Accept
+          </button>
+        )}
+      </div>
+
+      <p className="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-800">{e.summary}</p>
+
+      {e.attempted.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Already attempted</p>
+          <ul className="mt-1.5 space-y-1 text-sm text-gray-700">
+            {e.attempted.map((a) => (
+              <li key={a} className="flex items-start gap-2">
+                <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                {a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {e.status !== "RESOLVED" ? (
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={notes}
+            onChange={(ev) => setNotes(ev.target.value)}
+            placeholder="Resolution notes (optional)"
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <button
+            disabled={busy}
+            onClick={() => void run(() => resolveEscalation(e.id, notes))}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            Mark resolved
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-gray-500">
+          Resolved {formatDateTime(e.resolvedAt)}
+          {e.acceptedByName ? ` by ${e.acceptedByName}` : ""}
+          {e.notes ? ` — “${e.notes}”` : ""}
+        </p>
+      )}
+    </section>
   );
 }

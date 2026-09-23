@@ -170,7 +170,7 @@ dashboardRouter.get("/reports", (req, res) => {
   const escalationReasons = db
     .prepare(
       `SELECT ${ESCALATION_REASON_SQL} as reason, COUNT(*) as count FROM conversations c
-       WHERE c.auth_status = 'FAILED' GROUP BY reason ORDER BY count DESC`
+       WHERE ${OUTCOME_SQL} = 'ESCALATED' GROUP BY reason ORDER BY count DESC`
     )
     .all();
 

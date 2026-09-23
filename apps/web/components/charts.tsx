@@ -160,6 +160,7 @@ function TableView({ headers, rows }: { headers: string[]; rows: string[][] }) {
 export const OUTCOME_COLORS = {
   RESOLVED: "#16a34a",
   ESCALATED: "#dc2626",
+  CALLBACK: "#8b5cf6",
   ABANDONED: "#f59e0b",
   IN_PROGRESS: "#3b82f6",
 } as const;

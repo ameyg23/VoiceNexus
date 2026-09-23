@@ -15,6 +15,7 @@ import {
   LinkIcon,
   HeadsetIcon,
   KeyIcon,
+  CalendarIcon,
 } from "./icons";
 
 interface NavItem {
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Customers", href: "/admin/customers", icon: UsersIcon },
   { label: "Intents", href: "/admin/intents", icon: TargetIcon },
   { label: "Escalations", href: "/admin/escalations", icon: EscalateIcon },
+  { label: "Follow-ups", href: "/admin/follow-ups", icon: CalendarIcon },
   { label: "Reports", href: "/admin/reports", icon: ListIcon },
   { label: "Integrations", href: "/admin/integrations", icon: LinkIcon },
   { label: "Test Call", href: "/admin/test-call", icon: HeadsetIcon },

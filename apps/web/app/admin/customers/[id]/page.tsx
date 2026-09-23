@@ -7,7 +7,7 @@ import { fetchCustomer } from "../../../../lib/api";
 import { AdminShell, Card, ErrorNote, StatTile } from "../../../../components/AdminShell";
 import { Badge } from "../../../../components/Badge";
 import { CallsTable } from "../../../../components/CallsTable";
-import { MFA_LABELS, formatMoney } from "../../../../lib/format";
+import { ACTION_LABELS, MFA_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../../lib/format";
 
 type CustomerDetail = Awaited<ReturnType<typeof fetchCustomer>>;
 
@@ -54,7 +54,31 @@ export default function CustomerDetailPage() {
               <Field label="Phone verification" value={<Badge tone={c.mfaMethod === "NONE" ? "neutral" : "info"}>{MFA_LABELS[c.mfaMethod]}</Badge>} />
               <Field label="Autopay" value={c.autopayEnabled ? "On" : "Off"} />
               <Field label="Portal account" value={c.hasPortalAccount ? "Yes" : "No"} />
+              <Field label="Service ZIP" value={c.serviceZip ?? "—"} />
             </dl>
+          </Card>
+
+          <Card className="mt-6" title="Bookings & transactions" subtitle="What the assistant did on this account">
+            {detail.actions.length === 0 ? (
+              <p className="text-sm text-gray-500">Nothing yet.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 text-sm">
+                {detail.actions.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <span className="text-gray-800">
+                      <span className="font-medium">{ACTION_LABELS[a.type]}</span> · {a.description}
+                    </span>
+                    <span className="flex items-center gap-3 text-gray-500">
+                      {a.scheduledFor ? formatDateOnly(a.scheduledFor) : formatDateTime(a.createdAt)}
+                      <Badge tone={a.status === "SCHEDULED" ? "warning" : a.status === "CANCELLED" ? "neutral" : "success"}>{a.status.toLowerCase()}</Badge>
+                      <Link href={`/admin/calls/${a.conversationId}`} className="text-blue-600 hover:text-blue-700">
+                        {a.conversationId}
+                      </Link>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card className="mt-6" title="Call history" subtitle="Calls where this account's BAN was matched">

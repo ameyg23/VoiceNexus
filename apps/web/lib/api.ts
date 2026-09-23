@@ -1,4 +1,19 @@
-import type { AuthMethod, AuthStage, AuthStatus, CallOutcome, Channel, EmployeeRole, Intent } from "@voice-nexus/shared";
+import type {
+  AuthMethod,
+  AuthStage,
+  AuthStatus,
+  CallActionStatus,
+  CallActionType,
+  CallOutcome,
+  Channel,
+  EmployeeRole,
+  EscalationReason,
+  EscalationStatus,
+  Intent,
+  Language,
+} from "@voice-nexus/shared";
+
+export type { EscalationReason } from "@voice-nexus/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -11,12 +26,30 @@ export interface DemoCustomer {
 
 export interface TurnResponse {
   aiText: string;
+  // aiText with the operator's pronunciation overrides applied — what TTS should say.
+  speechText: string;
   stage: AuthStage;
   authStatus: AuthStatus;
+  // The assistant ended the call (goodbye, handoff to an agent, callback booked before verification).
+  endCall?: boolean;
+  transfer?: boolean;
 }
 
 export interface StartCallResponse extends TurnResponse {
   conversationId: string;
+  language: Language;
+  recordingEnabled: boolean;
+}
+
+export interface DemoConfig {
+  brandName: string;
+  assistantName: string;
+  language: Language;
+  recordingEnabled: boolean;
+}
+
+export async function fetchDemoConfig(): Promise<DemoConfig> {
+  return jsonOrThrow<DemoConfig>(await fetch(`${API_URL}/api/demo/config`));
 }
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
@@ -146,24 +179,75 @@ export interface ConversationSummary {
   channel: Channel;
   hasAudio: boolean;
   turnCount: number;
+  csatScore: number | null;
 }
 
-export type EscalationReason = "PIN_LOCKOUT" | "OTP_FAILED" | "VERIFICATION_FAILED";
+export interface CallAction {
+  id: number;
+  conversationId: string;
+  customerId: string | null;
+  customerName: string | null;
+  type: CallActionType;
+  status: CallActionStatus;
+  details: Record<string, unknown>;
+  scheduledFor: string | null;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Escalation {
+  id: number;
+  conversationId: string;
+  customerId: string | null;
+  customerName: string | null;
+  ani: string;
+  banProvided: string | null;
+  verified: boolean;
+  reason: EscalationReason;
+  intent: Intent | null;
+  summary: string;
+  attempted: string[];
+  status: EscalationStatus;
+  acceptedByName: string | null;
+  notes: string | null;
+  createdAt: string;
+  acceptedAt: string | null;
+  resolvedAt: string | null;
+}
+
 
 export interface ConversationDetail {
   conversation: ConversationSummary;
-  turns: { turnIndex: number; speaker: "AI" | "CUSTOMER"; text: string; timestamp: string }[];
+  turns: { turnIndex: number; speaker: "AI" | "CUSTOMER"; text: string; timestamp: string; latencyMs: number | null }[];
   authSession: { stage: AuthStage; pinAttempts: number; authenticatedAt: string | null } | null;
   otps: { method: "EMAIL" | "SMS"; destinationMasked: string; status: string; attempts: number; createdAt: string }[];
+  actions: CallAction[];
+  escalation: Escalation | null;
 }
 
-export interface DashboardSummary {
+export interface Kpis {
   totalCalls: number;
+  finishedCalls: number;
   resolved: number;
   escalated: number;
+  callback: number;
   abandoned: number;
   inProgress: number;
+  containmentRate: number | null;
+  transferRate: number | null;
+  callbackRate: number | null;
+  abandonmentRate: number | null;
   avgHandleSeconds: number | null;
+  csatAverage: number | null;
+  csatResponses: number;
+  costPerCall: number | null;
+  handoffs: { total: number; withFullContext: number; waiting: number };
+  latency: { turns: number; medianMs: number | null; p90Ms: number | null };
+}
+
+export interface DashboardSummary extends Kpis {
+  actions: { type: CallActionType; count: number }[];
   authMethods: { method: AuthMethod; count: number }[];
   intents: { intent: Intent; count: number }[];
   recentCalls: ConversationSummary[];
@@ -186,15 +270,19 @@ export interface CustomerSummary {
   autopayEnabled: boolean;
   discountPercent: number;
   hasPortalAccount: boolean;
+  serviceZip?: string | null;
   createdAt: string;
   callCount?: number;
   lastCallAt?: string | null;
 }
 
 export interface ReportsData {
+  kpis: Kpis;
+  csatDistribution: { score: number; count: number }[];
+  actionsByType: { type: CallActionType; status: CallActionStatus; count: number }[];
   callsByDay: { day: string; total: number; resolved: number; escalated: number }[];
   callsByHour: { hour: number; total: number }[];
-  intentPerformance: { intent: Intent; total: number; resolved: number; escalated: number; abandoned: number }[];
+  intentPerformance: { intent: Intent; total: number; resolved: number; escalated: number; callback: number; abandoned: number }[];
   handleTime: {
     overall: { calls: number; avgSeconds: number | null };
     byOutcome: { outcome: CallOutcome; calls: number; avgSeconds: number | null }[];
@@ -211,6 +299,8 @@ export interface IntentCatalogEntry {
   description: string;
   examples: string[];
   dataShared: string[];
+  enabled: boolean;
+  customExamples: string[];
   total: number;
   resolved: number;
   escalated: number;
@@ -246,7 +336,12 @@ export function fetchCustomers() {
 }
 
 export function fetchCustomer(id: string) {
-  return authFetch<{ customer: CustomerSummary; conversations: ConversationSummary[]; stats: { total: number; resolved: number; escalated: number } }>(
+  return authFetch<{
+    customer: CustomerSummary;
+    conversations: ConversationSummary[];
+    actions: CallAction[];
+    stats: { total: number; resolved: number; escalated: number };
+  }>(
     `/api/customers/${encodeURIComponent(id)}`
   );
 }
@@ -261,6 +356,72 @@ export function fetchIntents() {
 
 export function fetchIntegrations() {
   return authFetch<IntegrationsStatus>("/api/dashboard/integrations");
+}
+
+export interface TenantSettings {
+  brandName: string;
+  assistantName: string;
+  voiceTone: string;
+  language: Language;
+  phoneVoice: string;
+  pronunciations: { from: string; to: string }[];
+  greetingPrompt: string;
+  holdPrompt: string;
+  closePrompt: string;
+  aiDisclosureEnabled: boolean;
+  aiDisclosureText: string;
+  recordingEnabled: boolean;
+  recordingDisclosureEnabled: boolean;
+  recordingDisclosureText: string;
+  csatSurveyEnabled: boolean;
+  escalateOnAgentRequest: boolean;
+  unknownTurnsBeforeEscalation: number;
+  agentTransferNumber: string;
+  intentOverrides: Record<string, { enabled: boolean; examples: string[] }>;
+  costPerMinuteAutomated: number;
+  costPerMinuteAgent: number;
+  agentMinutesPerEscalation: number;
+}
+
+export interface SettingsResponse {
+  settings: TenantSettings;
+  defaults: TenantSettings;
+  preview: { greeting: string; greetingSpoken: string };
+}
+
+export function fetchSettings() {
+  return authFetch<SettingsResponse>("/api/settings");
+}
+
+export async function saveSettings(patch: Partial<TenantSettings>): Promise<SettingsResponse> {
+  const res = await fetch(`${API_URL}/api/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+    credentials: "include",
+  });
+  return jsonOrThrow<SettingsResponse>(res);
+}
+
+export function fetchEscalations(status?: "OPEN" | EscalationStatus) {
+  return authFetch<{ escalations: Escalation[] }>(`/api/escalations${status ? `?status=${status}` : ""}`);
+}
+
+export function acceptEscalation(id: number) {
+  return authFetch<{ escalation: Escalation }>(`/api/escalations/${id}/accept`, {});
+}
+
+export function resolveEscalation(id: number, notes: string) {
+  return authFetch<{ escalation: Escalation }>(`/api/escalations/${id}/resolve`, { notes });
+}
+
+export function fetchActions(filters: { type?: CallActionType; status?: CallActionStatus } = {}) {
+  const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][]).toString();
+  return authFetch<{ actions: CallAction[] }>(`/api/actions${qs ? `?${qs}` : ""}`);
+}
+
+export function updateActionStatus(id: number, status: "DONE" | "CANCELLED") {
+  return authFetch<{ action: CallAction }>(`/api/actions/${id}/status`, { status });
 }
 
 export function fetchVoiceToken() {

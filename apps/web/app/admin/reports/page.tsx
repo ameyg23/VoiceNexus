@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { fetchReports, type ReportsData } from "../../../lib/api";
 import { AdminShell, Card, ErrorNote, StatTile } from "../../../components/AdminShell";
 import { BarList, ColumnChart } from "../../../components/charts";
-import { ESCALATION_REASON_LABELS, MFA_LABELS, OUTCOME_LABELS, formatDuration, intentLabel, percent } from "../../../lib/format";
+import { ACTION_LABELS, ESCALATION_REASON_LABELS, MFA_LABELS, OUTCOME_LABELS, formatDuration, formatMoney, formatRate, intentLabel, percent } from "../../../lib/format";
 
 export default function ReportsPage() {
   const [data, setData] = useState<ReportsData | null>(null);
@@ -23,7 +23,24 @@ export default function ReportsPage() {
       <ErrorNote error={error} />
       {data && (
         <>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <Card title="Business impact" subtitle="PRD §10 categories, over finished calls. Calibrate targets against your own pre-VoiceNexus baseline.">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatTile label="IVR containment" value={formatRate(data.kpis.containmentRate)} hint={`${data.kpis.resolved} of ${data.kpis.finishedCalls} resolved end-to-end`} />
+              <StatTile label="Transfer rate" value={formatRate(data.kpis.transferRate)} hint={`${data.kpis.escalated} to a live agent`} />
+              <StatTile label="Callback rate" value={formatRate(data.kpis.callbackRate)} hint={`${data.kpis.callback} callbacks booked`} />
+              <StatTile label="Abandonment rate" value={formatRate(data.kpis.abandonmentRate)} hint={`${data.kpis.abandoned} dropped before resolution`} />
+              <StatTile label="Escalations with full context" value={data.kpis.handoffs.total ? percent(data.kpis.handoffs.withFullContext, data.kpis.handoffs.total) : "—"} hint={`${data.kpis.handoffs.total} handoffs`} />
+              <StatTile label="Cost per care call" value={formatMoney(data.kpis.costPerCall)} hint="Your rates, set in Settings" />
+              <StatTile label="Care CSAT" value={data.kpis.csatAverage === null ? "—" : `${data.kpis.csatAverage}/5`} hint={`${data.kpis.csatResponses} responses`} />
+              <StatTile
+                label="Reply latency (median)"
+                value={data.kpis.latency.medianMs === null ? "—" : `${(data.kpis.latency.medianMs / 1000).toFixed(2)}s`}
+                hint={data.kpis.latency.p90Ms === null ? "PRD target ≤ 1.0s" : `p90 ${(data.kpis.latency.p90Ms / 1000).toFixed(2)}s · target ≤ 1.0s`}
+              />
+            </div>
+          </Card>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card title="Calls per day" subtitle="Last 14 days">
               <ColumnChart
                 data={data.callsByDay.map((d) => ({
@@ -53,6 +70,7 @@ export default function ReportsPage() {
                       <th className="py-2.5 pr-4 text-right">Total calls</th>
                       <th className="py-2.5 pr-4 text-right">AI resolved</th>
                       <th className="py-2.5 pr-4 text-right">Escalated</th>
+                      <th className="py-2.5 pr-4 text-right">Callback</th>
                       <th className="py-2.5 pr-4 text-right">Abandoned</th>
                       <th className="py-2.5 pr-4 text-right">Containment</th>
                     </tr>
@@ -64,6 +82,7 @@ export default function ReportsPage() {
                         <td className="py-2.5 pr-4 text-right tabular-nums">{row.total}</td>
                         <td className="py-2.5 pr-4 text-right tabular-nums">{row.resolved}</td>
                         <td className="py-2.5 pr-4 text-right tabular-nums">{row.escalated}</td>
+                        <td className="py-2.5 pr-4 text-right tabular-nums">{row.callback}</td>
                         <td className="py-2.5 pr-4 text-right tabular-nums">{row.abandoned}</td>
                         <td className="py-2.5 pr-4 text-right font-medium tabular-nums">{percent(row.resolved, row.total)}</td>
                       </tr>
@@ -111,7 +130,7 @@ export default function ReportsPage() {
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Card title="Handle time" subtitle="Average duration of calls with a recorded end">
+            <Card title="Handle time" subtitle="Automated vs. escalated, calls with a recorded end">
               <div className="grid grid-cols-3 gap-3">
                 <StatTile label="Overall" value={formatDuration(data.handleTime.overall.avgSeconds)} hint={`${data.handleTime.overall.calls} calls`} />
                 <StatTile label={OUTCOME_LABELS.RESOLVED} value={formatDuration(aht("RESOLVED")?.avgSeconds)} hint={`${aht("RESOLVED")?.calls ?? 0} calls`} />
@@ -131,6 +150,32 @@ export default function ReportsPage() {
               <div className="mt-3">
                 <BarList data={data.channels.map((c) => ({ label: c.channel === "PHONE" ? "Phone (Twilio)" : "Demo (browser)", value: c.count }))} />
               </div>
+            </Card>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card title="Post-call CSAT" subtitle="Ratings callers gave at the end of automated calls (1 = very dissatisfied, 5 = very satisfied)">
+              {data.kpis.csatResponses === 0 ? (
+                <p className="text-sm text-gray-500">No ratings yet.</p>
+              ) : (
+                <BarList data={[...data.csatDistribution].reverse().map((c) => ({ label: `${c.score} star${c.score === 1 ? "" : "s"}`, value: c.count }))} />
+              )}
+            </Card>
+            <Card title="Transactions & bookings" subtitle="What the assistant completed or scheduled">
+              {data.actionsByType.length === 0 ? (
+                <p className="text-sm text-gray-500">None yet.</p>
+              ) : (
+                <BarList
+                  data={Object.values(
+                    data.actionsByType.reduce<Record<string, { label: string; value: number }>>((acc, a) => {
+                      if (a.status === "CANCELLED") return acc;
+                      acc[a.type] ??= { label: ACTION_LABELS[a.type] ?? a.type, value: 0 };
+                      acc[a.type].value += a.count;
+                      return acc;
+                    }, {})
+                  )}
+                />
+              )}
             </Card>
           </div>
         </>

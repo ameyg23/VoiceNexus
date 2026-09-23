@@ -38,7 +38,7 @@ import { phraseResponseAI, translateAI, type VoiceStyle } from "./aiEngine.js";
 import { getSettings, fillTemplate, isIntentEnabled, LANGUAGE_NAMES, type TenantSettings } from "./settings.js";
 import { recordAction } from "./actions.js";
 import { createEscalation } from "./escalations.js";
-import { WINDOW_LABELS, addDays, daysBetween, fromIsoDate, parseWindow, speakDate, toIsoDate, todayLocal, type TimeWindow } from "./dates.js";
+import { WINDOW_LABELS, addDays, daysBetween, fromIsoDate, parseSpokenDate, parseWindow, speakDate, toIsoDate, todayLocal, type TimeWindow } from "./dates.js";
 
 const PIN_MAX_ATTEMPTS = 3;
 const PROMISE_MAX_DAYS = 14;
@@ -154,6 +154,13 @@ function callerAni(conversationId: string): string {
   return row?.ani ?? "";
 }
 
+function lastAiAskedAnythingElse(conversationId: string): boolean {
+  const row = db
+    .prepare(`SELECT text FROM transcript_turns WHERE conversation_id = @cid AND speaker = 'AI' ORDER BY turn_index DESC LIMIT 1`)
+    .get({ "@cid": conversationId }) as { text: string } | undefined;
+  return Boolean(row?.text.trim().endsWith(ANYTHING_ELSE));
+}
+
 function hasEscalation(conversationId: string): boolean {
   return Boolean(db.prepare(`SELECT 1 FROM escalations WHERE conversation_id = @cid`).get({ "@cid": conversationId }));
 }
@@ -190,6 +197,7 @@ function phoneEnding(ani: string): string {
 
 // ---------- entry point ----------
 
+const BARE_NO_RE = /^\s*(no|nope|nah|neither|none of them|no thanks)\b[.!]?\s*$/i;
 const AGENT_RE = /\b(agent|representative|human|real person|live person|operator|customer service rep)\b|speak (to|with) (a |an )?(person|someone)/i;
 const FAREWELL_RE = /\b(bye|goodbye|that'?s all|that is all|nothing else|no thanks|no thank you|i'?m (all )?(good|set|done)|that'?s it|all set)\b/i;
 
@@ -226,7 +234,7 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
       const intent = await classify(ctx);
       noteIntent(ctx.conversationId, intent);
       if (intent === "AGENT_REQUEST") return agentRequested(ctx);
-      if (intent === "SCHEDULE_CALLBACK") return startCallback(ctx); // needs no account access
+      if (intent === "SCHEDULE_CALLBACK") return startCallback(ctx, utterance); // needs no account access
       setStage(ctx.conversationId, "AWAITING_BAN");
       const ack = intent !== "UNKNOWN" && isIntentEnabled(intent, settings) ? "I can help with that. " : "";
       return reply(ctx, `${ack}First, to pull up your account, can you tell me your account number? It's the BAN on your bill.`);
@@ -290,6 +298,10 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
 
     case "AUTHENTICATED": {
       const intent = await classify(ctx);
+      // "No, that's it" in answer to "Is there anything else?" means the caller is done.
+      if (intent === "UNKNOWN" && lastAiAskedAnythingElse(ctx.conversationId) && (await parseYesNo(utterance, ANYTHING_ELSE)) === "NO") {
+        return closeCall(ctx);
+      }
       return handleIntent(ctx, intent, utterance);
     }
   }
@@ -393,7 +405,7 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
     }
 
     case "SCHEDULE_CALLBACK":
-      return startCallback(ctx);
+      return startCallback(ctx, utterance);
 
     case "AGENT_REQUEST":
       return agentRequested(ctx);
@@ -456,10 +468,28 @@ function confirmTech(ctx: Ctx, date: string, window: TimeWindow): TurnResult {
   return reply(ctx, `I'll book a technician for ${speakDate(date)} in the ${WINDOW_LABELS[window]}. Shall I confirm that?`);
 }
 
-function startCallback(ctx: Ctx): TurnResult {
+// If the request already says when ("call me back tomorrow morning"), go straight to confirming it.
+function startCallback(ctx: Ctx, utterance = ""): TurnResult {
   noteIntent(ctx.conversationId, "SCHEDULE_CALLBACK");
   setSubflow(ctx.conversationId, { type: "CALLBACK", step: "TIME" });
-  return reply(ctx, "Sure. When would you like us to call you back? For example, tomorrow morning or Friday afternoon.");
+  const early = utterance ? callbackFromTime(ctx, parseSpokenDate(utterance), parseWindow(utterance)) : null;
+  return early ?? reply(ctx, "Sure. When would you like us to call you back? For example, tomorrow morning or Friday afternoon.");
+}
+
+// Shared by the first request and the TIME step. Returns null when the words carry no usable time.
+function callbackFromTime(ctx: Ctx, date: string | null, window: TimeWindow | null): TurnResult | null {
+  if (!date && window) {
+    // "in the afternoon" with no day → today, if that window hasn't started yet; otherwise tomorrow.
+    const hour = new Date().getHours();
+    const startHour = window === "MORNING" ? 8 : window === "AFTERNOON" ? 12 : 17;
+    const day = hour < startHour ? todayLocal() : addDays(todayLocal(), 1);
+    return confirmCallback(ctx, toIsoDate(day), window);
+  }
+  if (!date) return null;
+  if (!validCallbackDate(date)) return reply(ctx, `We can call you back any time in the next ${CALLBACK_MAX_DAYS} days. When works for you?`);
+  if (window) return confirmCallback(ctx, date, window);
+  setSubflow(ctx.conversationId, { type: "CALLBACK", step: "WINDOW", date });
+  return reply(ctx, `${speakDate(date)}. Morning, afternoon, or evening?`);
 }
 
 function validCallbackDate(iso: string): boolean {
@@ -517,9 +547,12 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
     case "PLAN_CHANGE": {
       const customer = requireCustomer(ctx.session);
       if (sf.step === "CHOOSE") {
-        if (isCancel(u) || (await parseYesNo(u, "Do you want to change your plan?")) === "NO") return cancelled();
+        // A plan name wins over any "no"/"don't" in the sentence ("the fastest one, but I don't need TV").
         const plan = await extractPlan(u);
-        if (!plan) return reply(ctx, `Sorry, I didn't catch which plan. ${planOptionsText(customer)}`);
+        if (!plan) {
+          if (isCancel(u) || BARE_NO_RE.test(u)) return cancelled();
+          return reply(ctx, `Sorry, I didn't catch which plan. ${planOptionsText(customer)}`);
+        }
         if (plan.name === customer.plan_name) return reply(ctx, `You're already on ${plan.name}. Which other plan would you like, or say cancel to keep it?`);
         return confirmPlan(ctx, customer, plan.name);
       }
@@ -596,20 +629,10 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
     case "CALLBACK": {
       if (isCancel(u)) return cancelled();
       if (sf.step === "TIME") {
-        const date = await extractDate(u);
-        const window = parseWindow(u);
-        if (!date && window) {
-          // "in the afternoon" with no day → today, if that window hasn't started yet; otherwise tomorrow.
-          const hour = new Date().getHours();
-          const startHour = window === "MORNING" ? 8 : window === "AFTERNOON" ? 12 : 17;
-          const day = hour < startHour ? todayLocal() : addDays(todayLocal(), 1);
-          return confirmCallback(ctx, toIsoDate(day), window);
-        }
-        if (!date) return reply(ctx, "Sorry, I didn't catch a time. When should we call you back? For example, tomorrow morning.");
-        if (!validCallbackDate(date)) return reply(ctx, `We can call you back any time in the next ${CALLBACK_MAX_DAYS} days. When works for you?`);
-        if (window) return confirmCallback(ctx, date, window);
-        setSubflow(ctx.conversationId, { type: "CALLBACK", step: "WINDOW", date });
-        return reply(ctx, `${speakDate(date)}. Morning, afternoon, or evening?`);
+        return (
+          callbackFromTime(ctx, await extractDate(u), parseWindow(u)) ??
+          reply(ctx, "Sorry, I didn't catch a time. When should we call you back? For example, tomorrow morning.")
+        );
       }
       if (sf.step === "WINDOW") {
         const window = parseWindow(u);

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AuthStage, AuthStatus } from "@voice-nexus/shared";
-import { endCall, fetchDemoCustomers, sendTurn, startCall, uploadCallAudio, type DemoCustomer } from "../../../lib/api";
+import Link from "next/link";
+import type { AuthStage, AuthStatus, Language } from "@voice-nexus/shared";
+import { endCall, fetchDemoConfig, fetchDemoCustomers, sendTurn, startCall, uploadCallAudio, type DemoCustomer } from "../../../lib/api";
 import { TopBar } from "../../../components/TopBar";
 import { Badge, type BadgeTone } from "../../../components/Badge";
 import { MicIcon, PersonIcon, PhoneEndIcon, SendIcon, WaveformIcon } from "../../../components/icons";
@@ -57,6 +58,12 @@ export default function DemoCallPage() {
   const [error, setError] = useState<string | null>(null);
   const [micSupported, setMicSupported] = useState(false);
   const [duration, setDuration] = useState<number | null>(null);
+  // Tenant settings the call page honours: speech language, and whether recording is allowed.
+  const [language, setLanguage] = useState<Language>("en-US");
+  const [recordingEnabled, setRecordingEnabled] = useState(true);
+  // Why the call ended, when the assistant ended it (goodbye, transfer to an agent, callback booked).
+  const [endNote, setEndNote] = useState<string | null>(null);
+  const handleEndRef = useRef<(note?: string) => Promise<void>>(async () => {});
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -80,12 +87,34 @@ export default function DemoCallPage() {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript]);
 
-  const speak = useCallback((text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(utterance);
-  }, []);
+  // Speaks with the tenant language; onDone fires when speech finishes (or right away without TTS), so
+  // an assistant-ended call only wraps up after the caller has heard the last line.
+  const speak = useCallback(
+    (text: string, onDone?: () => void) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        onDone?.();
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = language;
+      if (onDone) {
+        let done = false;
+        const finish = () => {
+          if (!done) {
+            done = true;
+            onDone();
+          }
+        };
+        utterance.onend = finish;
+        utterance.onerror = finish;
+        // Some browsers (and silent tabs) never fire onend — give up after roughly the time it takes to say it.
+        setTimeout(finish, Math.min(20000, 2500 + text.length * 70));
+      }
+      window.speechSynthesis.speak(utterance);
+    },
+    [language]
+  );
 
   const appendTurn = useCallback((speaker: "AI" | "CUSTOMER", text: string) => {
     setTranscript((prev) => [...prev, { speaker, text, time: now() }]);
@@ -104,7 +133,14 @@ export default function DemoCallPage() {
         appendTurn("AI", result.aiText);
         setStage(result.stage);
         setAuthStatus(result.authStatus);
-        speak(result.aiText);
+        if (result.endCall) {
+          const note = result.transfer
+            ? "The assistant transferred you to a live agent. The handoff, with a summary of the call, is waiting in the Escalations queue."
+            : "The assistant ended the call.";
+          speak(result.speechText, () => void handleEndRef.current(note));
+        } else {
+          speak(result.speechText);
+        }
       } catch (e) {
         setError(String(e));
       } finally {
@@ -123,9 +159,15 @@ export default function DemoCallPage() {
     setDuration(null);
     audioChunksRef.current = [];
 
+    setEndNote(null);
     // Mic setup runs independently of call start — a slow or never-answered permission prompt
     // must never block the actual conversation (which can proceed via typed input regardless).
-    navigator.mediaDevices
+    // Skipped entirely when operations has switched call recording off.
+    const config = await fetchDemoConfig().catch(() => null);
+    const allowRecording = config?.recordingEnabled ?? true;
+    setRecordingEnabled(allowRecording);
+    if (config) setLanguage(config.language);
+    if (allowRecording) navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
         streamRef.current = stream;
@@ -147,8 +189,9 @@ export default function DemoCallPage() {
       setStage(result.stage);
       setAuthStatus(result.authStatus);
       setPhase("ACTIVE");
+      setLanguage(result.language);
       appendTurn("AI", result.aiText);
-      speak(result.aiText);
+      speak(result.speechText);
       window.localStorage.setItem("vn-last-conversation-id", result.conversationId);
     } catch (e) {
       setError(String(e));
@@ -162,7 +205,7 @@ export default function DemoCallPage() {
     if (!SR || isListening || isBusy) return;
 
     const recognition = new SR();
-    recognition.lang = "en-US";
+    recognition.lang = language;
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
@@ -177,7 +220,7 @@ export default function DemoCallPage() {
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [isListening, isBusy, handleUtterance]);
+  }, [isListening, isBusy, handleUtterance, language]);
 
   const handleManualSend = useCallback(() => {
     const text = manualText.trim();
@@ -186,8 +229,9 @@ export default function DemoCallPage() {
     void handleUtterance(text);
   }, [manualText, handleUtterance]);
 
-  const handleEnd = useCallback(async () => {
+  const handleEnd = useCallback(async (note?: string) => {
     if (!conversationId) return;
+    if (note) setEndNote(note);
     setIsBusy(true);
     setError(null);
 
@@ -218,6 +262,7 @@ export default function DemoCallPage() {
       setIsBusy(false);
     }
   }, [conversationId]);
+  handleEndRef.current = handleEnd;
 
   const handleReset = useCallback(() => {
     setPhase("IDLE");
@@ -227,6 +272,7 @@ export default function DemoCallPage() {
     setTranscript([]);
     setDuration(null);
     setError(null);
+    setEndNote(null);
     audioChunksRef.current = [];
     mediaRecorderRef.current = null;
     streamRef.current = null;
@@ -354,16 +400,25 @@ export default function DemoCallPage() {
 
         {phase === "ENDED" && (
           <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            {endNote && <p className="mb-2 text-sm font-medium text-gray-900">{endNote}</p>}
             <p className="text-sm text-gray-700">
               Call ended. Duration: <span className="font-semibold text-gray-900">{duration ?? "—"}s</span>. Final
               stage: <span className="font-semibold text-gray-900">{stage ? STAGE_LABELS[stage] : "—"}</span>.
             </p>
-            <button
-              onClick={handleReset}
-              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
-            >
-              Start another call
-            </button>
+            {!recordingEnabled && <p className="mt-2 text-xs text-gray-500">Call recording is switched off in Settings, so no audio was saved.</p>}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleReset}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Start another call
+              </button>
+              {conversationId && (
+                <Link href={`/admin/calls/${conversationId}`} className="text-sm font-medium text-blue-600 hover:text-blue-700">
+                  View this call in the dashboard →
+                </Link>
+              )}
+            </div>
           </div>
         )}
       </main>

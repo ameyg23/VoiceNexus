@@ -142,9 +142,12 @@ export function findPlan(name: string): PlanInfo | undefined {
 // Deterministic plan matching from speech ("the one gig plan with TV", "fiber five hundred").
 export function matchPlanFromText(text: string): PlanInfo | null {
   const t = text.toLowerCase();
-  const tv = /\b(tv|television|cable tv|channels)\b/.test(t) && !/\bno tv\b|\bwithout tv\b/.test(t);
+  const mentionsTv = /\b(tv|television|cable tv|channels)\b/.test(t);
+  // "no TV", "without TV", "I don't need television", "not the TV one"
+  const negatedTv = /\b(no|without|not|don'?t (need|want)|do not (need|want)|skip( the)?)\b[\w\s']{0,12}\b(tv|television|channels)\b/.test(t);
+  const tv = mentionsTv && !negatedTv;
   let speed: 300 | 500 | 1000 | null = null;
-  if (/\b(1000|1,000|thousand|gig|gigabit|1 ?g)\b/.test(t)) speed = 1000;
+  if (/\b(1000|1,000|thousand|gig|gigabit|1 ?g|fastest|quickest|top speed)\b/.test(t)) speed = 1000;
   else if (/\b(500|five hundred)\b/.test(t)) speed = 500;
   else if (/\b(300|three hundred)\b/.test(t)) speed = 300;
 

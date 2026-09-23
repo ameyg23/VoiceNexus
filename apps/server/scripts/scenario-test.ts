@@ -158,6 +158,20 @@ async function scenarios() {
     check("plan updated in DB", one(`SELECT plan_name p FROM customers WHERE id = 'CUS003'`)!.p === "Fiber 1000 + TV");
   }
 
+  console.log("\n4b. Plan choice with a negation in it; 'no' after 'anything else' ends politely");
+  {
+    const call = await Call.start();
+    await call.say("hello");
+    await verifyPin(call, "100001", "4821");
+    await call.say("what other plans do you have");
+    const confirm = await call.say("the fastest one you have, but I don't need television");
+    expectText(confirm, /to Fiber 1000 at \$90/i, "picks Fiber 1000 without TV (not treated as 'no')");
+    const keep = await call.say("no");
+    expectText(keep, /haven't changed anything.*anything else/i, "declining the switch keeps the plan");
+    const done = await call.say("hmm, actually no, leave it as it is");
+    expectText(done, /scale of 1 to 5/i, "'no' after 'anything else?' closes the call (CSAT)");
+  }
+
   console.log("\n5. Cancel mid-subflow");
   {
     const call = await Call.start();
@@ -220,6 +234,13 @@ async function scenarios() {
     check("CALLBACK action recorded without account access", Boolean(one(`SELECT 1 x FROM call_actions WHERE conversation_id = ? AND type = 'CALLBACK' AND customer_id IS NULL`, call.id)));
   }
 
+  console.log("\n9b. Callback with the time in the first sentence");
+  {
+    const call = await Call.start();
+    const confirm = await call.say("can someone call me back tomorrow afternoon");
+    expectText(confirm, /ending in 9 9 9 9 on .* afternoon/i, "skips 'when?' and confirms the time straight away");
+  }
+
   console.log("\n10. Agent request mid-verification → structured, unverified handoff (VN-5)");
   {
     const call = await Call.start();
@@ -279,6 +300,55 @@ async function scenarios() {
     await verifyPin(call, "100003", "5560");
     const t = await call.say("I want to upgrade my plan");
     expectText(t, /not something I can help with.*live agent/i, "disabled intent: honest limit + escalation offer");
+  }
+
+  console.log("\n15. Ops dashboard APIs over the calls above (employee session)");
+  {
+    const login = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "priya.sharma@voicenexus.demo", password: "admin-demo-pass" }),
+    });
+    // Login clears the other session type too, so pick the employee cookie out of the Set-Cookie list.
+    const cookie = (login.headers.getSetCookie().find((c) => c.startsWith("vn_employee_session=")) ?? "").split(";")[0];
+    check("admin login", login.status === 200 && cookie.startsWith("vn_employee_session="), `status ${login.status}`);
+    const api = async (p: string, init: RequestInit = {}) => {
+      const res = await fetch(`${BASE}${p}`, { ...init, headers: { "Content-Type": "application/json", cookie, ...(init.headers ?? {}) } });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+
+    const summary = (await api("/api/dashboard/summary")).json;
+    check("KPIs computed", summary.transferRate !== null && summary.callback >= 1 && summary.csatResponses >= 1 && summary.costPerCall !== null, JSON.stringify(summary).slice(0, 300));
+    check("reply latency tracked", summary.latency.turns > 0 && summary.latency.medianMs !== null, JSON.stringify(summary.latency));
+
+    const reports = (await api("/api/dashboard/reports?tzOffset=-330")).json;
+    check("reports include escalation reasons from handoffs", reports.escalationReasons.some((r: any) => r.reason === "CALLER_REQUESTED"), JSON.stringify(reports.escalationReasons));
+    check("CSAT distribution", reports.csatDistribution.find((c: any) => c.score === 5)?.count >= 1, JSON.stringify(reports.csatDistribution));
+
+    const open = (await api("/api/escalations?status=OPEN")).json.escalations as any[];
+    check("escalation queue lists waiting handoffs", open.length >= 3 && open.every((e) => e.status === "WAITING"), `${open.length} open`);
+    const target = open[0];
+    const accepted = await api(`/api/escalations/${target.id}/accept`, { method: "POST", body: "{}" });
+    check("accept handoff", accepted.status === 200 && accepted.json.escalation.acceptedByName === "Priya Sharma", JSON.stringify(accepted.json));
+    const again = await api(`/api/escalations/${target.id}/accept`, { method: "POST", body: "{}" });
+    check("can't accept twice (409)", again.status === 409, `status ${again.status}`);
+    const resolved = await api(`/api/escalations/${target.id}/resolve`, { method: "POST", body: JSON.stringify({ notes: "Verified by phone, balance explained" }) });
+    check("resolve handoff with notes", resolved.status === 200 && resolved.json.escalation.status === "RESOLVED", JSON.stringify(resolved.json));
+
+    const callbacks = (await api("/api/actions?type=CALLBACK&status=SCHEDULED")).json.actions as any[];
+    check("callback appears in follow-ups", callbacks.length >= 1 && /call back|callback/i.test(callbacks[0].description), JSON.stringify(callbacks[0]));
+    const done = await api(`/api/actions/${callbacks[0].id}/status`, { method: "POST", body: JSON.stringify({ status: "DONE" }) });
+    check("mark callback done", done.status === 200 && done.json.action.status === "DONE", JSON.stringify(done.json));
+
+    const detail = (await api(`/api/conversations/${open.find((e) => e.reason === "UNRESOLVED_REQUEST")?.conversationId ?? target.conversationId}`)).json;
+    check("call detail carries escalation + latency", Boolean(detail.escalation) && detail.turns.some((t: any) => t.latencyMs !== null), Object.keys(detail).join(","));
+
+    const bad = await api("/api/settings", { method: "PUT", body: JSON.stringify({ agentTransferNumber: "call bob", unknownTurnsBeforeEscalation: 99 }) });
+    check("settings validation rejects bad values", bad.status === 400 && bad.json.error.fieldErrors.agentTransferNumber && bad.json.error.fieldErrors.unknownTurnsBeforeEscalation, JSON.stringify(bad.json));
+    const good = await api("/api/settings", { method: "PUT", body: JSON.stringify({ assistantName: "Nova" }) });
+    check("settings save + greeting preview", good.status === 200 && /Nova/.test(good.json.preview.greeting), JSON.stringify(good.json?.preview));
+    const anon = await fetch(`${BASE}/api/settings`);
+    check("settings require an employee session", anon.status === 401, `status ${anon.status}`);
   }
 }
 

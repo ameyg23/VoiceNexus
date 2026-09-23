@@ -8,8 +8,10 @@ import { AdminShell, Card, ErrorNote } from "../../../../components/AdminShell";
 import { Badge } from "../../../../components/Badge";
 import { CheckIcon, PersonIcon, WaveformIcon } from "../../../../components/icons";
 import {
+  ACTION_LABELS,
   AUTH_METHOD_LABELS,
   ESCALATION_REASON_LABELS,
+  ESCALATION_STATUS_TONES,
   OUTCOME_LABELS,
   OUTCOME_TONES,
   formatDateTime,
@@ -24,12 +26,26 @@ export default function CallDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchConversation(id)
-      .then(setDetail)
-      .catch((err) => setError(err instanceof Error && err.message.startsWith("404") ? `No call with ID ${id}.` : String(err)));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    const load = () =>
+      fetchConversation(id)
+        .then((d) => {
+          if (cancelled) return;
+          setDetail(d);
+          // Live view (PRD VN-10 agent-assist): while the call is in progress, keep the transcript current.
+          if (d.conversation.outcome === "IN_PROGRESS") timer = setTimeout(load, 3000);
+        })
+        .catch((err) => setError(err instanceof Error && err.message.startsWith("404") ? `No call with ID ${id}.` : String(err)));
+    void load();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [id]);
 
   const c = detail?.conversation;
+  const live = c?.outcome === "IN_PROGRESS";
 
   return (
     <AdminShell
@@ -50,12 +66,25 @@ export default function CallDetailPage() {
             <Tile label="Duration">{formatDuration(c.durationSeconds)}</Tile>
             <Tile label="Intent">{intentLabel(c.detectedIntent)}</Tile>
             <Tile label="Verified by">{c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "Not verified"}</Tile>
-            <Tile label="Resolved by">{c.outcome === "ESCALATED" ? "Agent (escalated)" : "VoiceNexus"}</Tile>
+            <Tile label="Resolved by">{c.outcome === "ESCALATED" ? "Agent (escalated)" : c.outcome === "CALLBACK" ? "Callback" : "VoiceNexus"}</Tile>
+            <Tile label="CSAT">{c.csatScore ? `${c.csatScore}/5` : "—"}</Tile>
             <Tile label="Channel">{c.channel === "PHONE" ? "Phone (Twilio)" : "Demo (browser)"}</Tile>
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-            <Card title="Conversation transcript" subtitle={`${detail.turns.length} turns`}>
+            <Card
+              title={
+                <span className="flex items-center gap-2">
+                  Conversation transcript
+                  {live && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" /> Live
+                    </span>
+                  )}
+                </span>
+              }
+              subtitle={`${detail.turns.length} turns${live ? " · updating every 3s" : ""}`}
+            >
               <div className="max-h-[36rem] space-y-2 overflow-y-auto pr-1">
                 {detail.turns.map((t) => (
                   <div key={t.turnIndex} className="flex gap-3 rounded-lg bg-gray-50 p-3">
@@ -69,7 +98,10 @@ export default function CallDetailPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-sm font-semibold text-gray-900">{t.speaker === "AI" ? "VoiceNexus" : "Caller"}</span>
-                        <span className="text-xs text-gray-400">{formatTime(t.timestamp)}</span>
+                        <span className="text-xs text-gray-400">
+                          {t.latencyMs !== null && t.latencyMs !== undefined && <span className="mr-2 tabular-nums">replied in {(t.latencyMs / 1000).toFixed(1)}s</span>}
+                          {formatTime(t.timestamp)}
+                        </span>
                       </div>
                       <p className="mt-0.5 text-sm text-gray-700">{t.text}</p>
                     </div>
@@ -79,6 +111,30 @@ export default function CallDetailPage() {
             </Card>
 
             <div className="space-y-6">
+              {detail.escalation && (
+                <Card
+                  title={
+                    <span className="flex items-center justify-between gap-2">
+                      Agent handoff
+                      <Badge tone={ESCALATION_STATUS_TONES[detail.escalation.status]}>{detail.escalation.status.toLowerCase()}</Badge>
+                    </span>
+                  }
+                >
+                  <p className="text-sm text-gray-800">{detail.escalation.summary}</p>
+                  {detail.escalation.attempted.length > 0 && (
+                    <ul className="mt-3 space-y-1 text-sm text-gray-600">
+                      {detail.escalation.attempted.map((a) => (
+                        <li key={a}>· {a}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {detail.escalation.notes && <p className="mt-3 text-sm text-gray-500">Agent notes: “{detail.escalation.notes}”</p>}
+                  <Link href="/admin/escalations" className="mt-3 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
+                    Open escalation queue →
+                  </Link>
+                </Card>
+              )}
+
               <Card title="Recording">
                 {c.hasAudio ? (
                   <audio controls preload="metadata" src={conversationAudioUrl(c.id)} className="w-full" />
@@ -144,17 +200,22 @@ export default function CallDetailPage() {
 }
 
 // Derived from recorded state only (no AI summary) — each line maps to something the server did.
-function actionsTaken({ conversation: c, otps }: ConversationDetail) {
-  const actions: { text: string; ok: boolean }[] = [];
-  actions.push({ text: c.banProvided ? `Captured account number ${c.banProvided}` : "No account number captured", ok: Boolean(c.banProvided) });
-  if (c.customerId) actions.push({ text: `Matched account to ${c.customerName ?? c.customerId}`, ok: true });
-  if (otps.length > 0) actions.push({ text: `Sent ${otps.length} one-time code${otps.length > 1 ? "s" : ""}`, ok: true });
-  if (c.authStatus === "SUCCESS") actions.push({ text: `Verified caller identity (${c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "—"})`, ok: true });
-  if (c.authStatus === "FAILED") actions.push({ text: "Verification failed — handed off to an agent", ok: false });
-  if (c.authStatus === "SUCCESS" && c.detectedIntent && c.detectedIntent !== "UNKNOWN") {
-    actions.push({ text: `Handled request: ${intentLabel(c.detectedIntent)}`, ok: true });
+function actionsTaken({ conversation: c, otps, actions, escalation }: ConversationDetail) {
+  const list: { text: string; ok: boolean }[] = [];
+  list.push({ text: c.banProvided ? `Captured account number ${c.banProvided}` : "No account number captured", ok: Boolean(c.banProvided) });
+  if (c.customerId) list.push({ text: `Matched account to ${c.customerName ?? c.customerId}`, ok: true });
+  if (otps.length > 0) list.push({ text: `Sent ${otps.length} one-time code${otps.length > 1 ? "s" : ""}`, ok: true });
+  if (c.authStatus === "SUCCESS") list.push({ text: `Verified caller identity (${c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "—"})`, ok: true });
+  if (c.authStatus === "FAILED") list.push({ text: "Verification failed", ok: false });
+  for (const a of actions) {
+    const verb = a.status === "CANCELLED" ? " (cancelled)" : a.status === "SCHEDULED" ? " (scheduled)" : "";
+    list.push({ text: `${ACTION_LABELS[a.type]}: ${a.description}${verb}`, ok: a.status !== "CANCELLED" });
   }
-  return actions;
+  if (escalation) list.push({ text: `Handed off to a live agent: ${ESCALATION_REASON_LABELS[escalation.reason] ?? escalation.reason}`, ok: false });
+  if (c.authStatus === "SUCCESS" && c.detectedIntent && c.detectedIntent !== "UNKNOWN" && actions.length === 0 && !escalation) {
+    list.push({ text: `Answered request: ${intentLabel(c.detectedIntent)}`, ok: true });
+  }
+  return list;
 }
 
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
