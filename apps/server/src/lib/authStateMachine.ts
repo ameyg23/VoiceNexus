@@ -1,9 +1,9 @@
 import { db } from "@voice-nexus/db";
 import type { AuthStage, Intent } from "@voice-nexus/shared";
-import { extractBan, extractPin, extractOtp } from "./extraction.js";
+import { extractBan, extractPin, extractOtp, classifyIntent } from "./extraction.js";
 import { findCustomerByBan, findCustomerById, verifyPin, getIntentResponseData, type CustomerRow } from "./businessLogic.js";
 import { issueOtp, verifyOtp, getDevOtp } from "./otpService.js";
-import { classifyIntentAI, phraseResponseAI } from "./aiEngine.js";
+import { phraseResponseAI } from "./aiEngine.js";
 
 const PIN_MAX_ATTEMPTS = 3;
 
@@ -19,6 +19,9 @@ export interface TurnResult {
   aiText: string;
   stage: AuthStage;
   authStatus: "PENDING" | "SUCCESS" | "FAILED";
+  // True when the conversation is over (farewell, or verification failed). The phone channel hangs
+  // up after speaking aiText; the demo UI leaves ending the call to the user.
+  endCall?: boolean;
 }
 
 function loadSession(conversationId: string): AuthSessionRow {
@@ -71,7 +74,7 @@ export async function advanceAuthSession(conversationId: string, utterance: stri
     case "AWAITING_INTENT": {
       // Best-effort intent capture before we even know who's calling — auth still gates any
       // actual data (ARCHITECTURE.md §1). Extraction failure just means UNKNOWN, never a block.
-      const intent = await classifyIntentAI(utterance);
+      const intent = await classifyIntent(utterance);
       setDetectedIntent(conversationId, intent);
       setStage(conversationId, "AWAITING_BAN");
       return {
@@ -130,7 +133,7 @@ export async function advanceAuthSession(conversationId: string, utterance: stri
 
       if (attempts >= PIN_MAX_ATTEMPTS) {
         markFailed(conversationId);
-        return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED" };
+        return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED", endCall: true };
       }
 
       return {
@@ -173,7 +176,7 @@ export async function advanceAuthSession(conversationId: string, utterance: stri
           };
         }
         markFailed(conversationId);
-        return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED" };
+        return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED", endCall: true };
       }
 
       return { aiText: "That code doesn't match. Please try again, or say 'resend' for a new one.", stage: "AWAITING_OTP", authStatus: "PENDING" };
@@ -187,10 +190,11 @@ export async function advanceAuthSession(conversationId: string, utterance: stri
           aiText: "Thanks for calling — have a great day!",
           stage: "AUTHENTICATED",
           authStatus: "SUCCESS",
+          endCall: true,
         };
       }
 
-      const intent = await classifyIntentAI(utterance);
+      const intent = await classifyIntent(utterance);
       setDetectedIntent(conversationId, intent);
 
       // Server decides what data is authorized and fetches it (businessLogic.ts); the AI only
@@ -207,7 +211,7 @@ export async function advanceAuthSession(conversationId: string, utterance: stri
     }
 
     case "FAILED": {
-      return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED" };
+      return { aiText: ESCALATION_TEXT, stage: "FAILED", authStatus: "FAILED", endCall: true };
     }
   }
 }

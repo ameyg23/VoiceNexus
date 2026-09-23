@@ -27,6 +27,9 @@ export interface Customer {
 export type AuthStatus = "PENDING" | "SUCCESS" | "FAILED";
 export type AuthMethod = "PIN" | "EMAIL_OTP" | "SMS_OTP";
 export type ConversationStatus = "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+export type Channel = "DEMO" | "PHONE";
+// Dashboard-facing outcome, derived server-side from auth_status + status (apps/server/src/lib/outcome.ts).
+export type CallOutcome = "RESOLVED" | "ESCALATED" | "ABANDONED" | "IN_PROGRESS";
 
 export interface Conversation {
   id: string; // display code VN-000001

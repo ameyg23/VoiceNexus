@@ -14,7 +14,7 @@ import type { Intent } from "@voice-nexus/shared";
 // "-lite" tier has a materially higher free-tier requests/minute quota than the "-latest"
 // flash alias (which resolves to the newest full flash model, capped at 5 req/min free —
 // too low for a multi-turn phone call). Discovered Thu while load-testing (CLAUDE.md note).
-const GEMINI_MODEL = "gemini-3.1-flash-lite";
+export const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const CALL_TIMEOUT_MS = 10000;
 
@@ -135,7 +135,9 @@ const INTENTS: Intent[] = [
   "UNKNOWN",
 ];
 
-export async function classifyIntentAI(utterance: string): Promise<Intent> {
+// Returns null only when the AI itself is unavailable (so extraction.ts can fall back to keywords);
+// a confident "can't tell" comes back as UNKNOWN.
+export async function classifyIntentAI(utterance: string): Promise<Intent | null> {
   const result = await callGemini(
     `You classify a telecom customer support caller's utterance into exactly one intent from this ` +
       `fixed list: ${INTENTS.join(", ")}.\n` +
@@ -152,7 +154,8 @@ export async function classifyIntentAI(utterance: string): Promise<Intent> {
     { type: "object", properties: { intent: { type: "string", enum: INTENTS } }, required: ["intent"] }
   );
 
-  const intent = result?.intent as Intent | undefined;
+  if (!result) return null;
+  const intent = result.intent as Intent | undefined;
   return intent && INTENTS.includes(intent) ? intent : "UNKNOWN";
 }
 

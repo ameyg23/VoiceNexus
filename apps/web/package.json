@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@twilio/voice-sdk": "^2.18.5",
     "@voice-nexus/shared": "*",
     "next": "15.5.25",
     "postcss": "^8.4.31",

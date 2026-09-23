@@ -10,6 +10,9 @@ import { devRouter } from "./routes/dev.js";
 import { employeeAuthRouter } from "./routes/employeeAuth.js";
 import { customerAuthRouter } from "./routes/customerAuth.js";
 import { dashboardRouter } from "./routes/dashboard.js";
+import { conversationsRouter } from "./routes/conversations.js";
+import { customersRouter } from "./routes/customers.js";
+import { twilioRouter } from "./routes/twilio.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -25,6 +28,10 @@ app.use("/api/calls", callsRouter);
 app.use("/api/auth/employee", employeeAuthRouter);
 app.use("/api/auth/customer", customerAuthRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/conversations", conversationsRouter);
+app.use("/api/customers", customersRouter);
+// Twilio webhooks are form-encoded and signature-checked inside the router (routes/twilio.ts).
+app.use("/api/twilio", twilioRouter);
 
 // Dev-only OTP console — mounted only when DEMO_MODE=true (ARCHITECTURE.md §10/§17).
 if (process.env.DEMO_MODE === "true") {
