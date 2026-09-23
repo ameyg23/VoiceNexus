@@ -24,8 +24,8 @@ export const authRouter = Router();
 const loginSchema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1) });
 
 // POST /api/auth/login → { accountType, redirectTo }. Employees are checked first; an email is never
-// both (customer signup refuses employee emails). Same 401 either way, so the response doesn't reveal
-// whether an email exists or which kind of account it is.
+// both (customer signup refuses employee emails) and is unique among customers (migration 004).
+// Same 401 either way, so the response doesn't reveal whether an email exists or which kind it is.
 authRouter.post("/login", (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "enter a valid email and password" });
@@ -40,14 +40,10 @@ authRouter.post("/login", (req, res) => {
     return res.json({ accountType: "employee", redirectTo: "/admin/dashboard" });
   }
 
-  // Several demo customers deliberately share one inbox (Resend's sandbox only delivers to the account
-  // owner — CLAUDE.md), so an email can match more than one customer: sign in to the one whose
-  // password matches.
-  const candidates = db
+  const customer = db
     .prepare(`SELECT id, portal_password_hash FROM customers WHERE lower(email) = @email AND portal_password_hash IS NOT NULL`)
-    .all({ "@email": email }) as { id: string; portal_password_hash: string }[];
-  const customer = candidates.find((c) => verifyPassword(password, c.portal_password_hash));
-  if (customer) {
+    .get({ "@email": email }) as { id: string; portal_password_hash: string } | undefined;
+  if (customer && verifyPassword(password, customer.portal_password_hash)) {
     clearEmployeeSession(res);
     setCustomerSession(res, customer.id);
     return res.json({ accountType: "customer", redirectTo: "/portal/account" });

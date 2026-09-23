@@ -55,14 +55,14 @@ const customers: SeedCustomer[] = [
   },
   {
     id: "CUS005", name: "Ellis Park", phoneNumber: "+15550101005", ban: "BAN100005", pin: "7742",
-    email: "ameydgaikwad@gmail.com", mfaEnabled: true, mfaMethod: "EMAIL",
+    email: "ellis.park@example.com", mfaEnabled: true, mfaMethod: "EMAIL",
     currentBalance: 210.55, lastPaymentAmount: 0, lastPaymentDate: "2026-07-10",
     nextBillingDueDate: "2026-09-15", pastDueAmount: 210.55, discountPercent: 0,
     autopayEnabled: false, planName: "Fiber 500 + TV", accountStatus: "PAST_DUE",
   },
   {
     id: "CUS006", name: "Farrah Aziz", phoneNumber: "+15550101006", ban: "BAN100006", pin: "9013",
-    email: "ameydgaikwad@gmail.com", mfaEnabled: true, mfaMethod: "EMAIL",
+    email: "farrah.aziz@example.com", mfaEnabled: true, mfaMethod: "EMAIL",
     currentBalance: 45.00, lastPaymentAmount: 45.00, lastPaymentDate: "2026-09-05",
     nextBillingDueDate: "2026-10-05", pastDueAmount: 0, discountPercent: 15,
     autopayEnabled: true, planName: "Cable Basic", accountStatus: "ACTIVE",

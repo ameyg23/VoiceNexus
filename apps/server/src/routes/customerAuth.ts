@@ -36,9 +36,8 @@ const signupSchema = z.object({
 // POST /api/auth/customer/signup — creates a brand-new customer account (its own BAN + PIN,
 // separate from the demo-seeded customers). `password` is the web portal login; `pin` is the
 // SAME 4-digit PIN used to authenticate over a phone call (authStateMachine.ts) — signup sets up
-// both at once so the new account is immediately usable on both surfaces. Deliberately NOT linked
-// to any existing seeded customer by email match — several seed rows intentionally share one
-// inbox for OTP testing (CLAUDE.md), so email isn't a safe join key there.
+// both at once so the new account is immediately usable on both surfaces. An email already on any
+// customer (or employee) is refused — emails are unique (migration 004), so sign-in is unambiguous.
 customerAuthRouter.post("/signup", (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -46,9 +45,8 @@ customerAuthRouter.post("/signup", (req, res) => {
   const { name, email, password, pin } = parsed.data;
 
   const existing = db
-    .prepare(`SELECT id FROM customers WHERE email = @email AND portal_password_hash IS NOT NULL`)
+    .prepare(`SELECT id FROM customers WHERE lower(email) = lower(@email)`)
     .get({ "@email": email });
-  // Emails are unique across both account kinds, so the unified /api/auth/login is never ambiguous.
   const isEmployee = db.prepare(`SELECT id FROM employees WHERE lower(email) = lower(@email)`).get({ "@email": email });
   if (existing || isEmployee) return res.status(409).json({ error: "an account with that email already exists" });
 
