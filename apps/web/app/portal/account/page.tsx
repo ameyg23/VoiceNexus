@@ -69,10 +69,10 @@ export default function PortalAccountPage() {
         )}
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <section className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white shadow-sm lg:col-span-2">
-            <p className="text-sm text-blue-100">Current balance</p>
+          <section className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm lg:col-span-2">
+            <p className="text-sm text-brand-100">Current balance</p>
             <p className="mt-1 text-4xl font-bold tabular-nums">{formatMoney(customer.currentBalance)}</p>
-            <p className="mt-2 text-sm text-blue-100">
+            <p className="mt-2 text-sm text-brand-100">
               {customer.currentBalance <= 0
                 ? "You're all paid up."
                 : customer.nextBillingDueDate
@@ -89,7 +89,7 @@ export default function PortalAccountPage() {
 
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <PhoneIcon className="h-4 w-4 text-blue-600" /> Need help?
+              <PhoneIcon className="h-4 w-4 text-brand-600" /> Need help?
             </p>
             <p className="mt-2 text-sm text-gray-600">
               Call {activity?.careLineNumber ? <span className="font-semibold text-gray-900 tabular-nums">{activity.careLineNumber}</span> : "our care line"} any time.{" "}
@@ -110,7 +110,7 @@ export default function PortalAccountPage() {
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <CalendarIcon className="h-4 w-4 text-blue-600" /> Coming up
+              <CalendarIcon className="h-4 w-4 text-brand-600" /> Coming up
             </h2>
             {!activity ? (
               <p className="mt-3 text-sm text-gray-400">Loading…</p>

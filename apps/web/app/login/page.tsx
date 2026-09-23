@@ -34,7 +34,7 @@ export default function LoginPage() {
       subtitle={
         <>
           New here?{" "}
-          <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-700">
+          <Link href="/signup" className="font-medium text-brand-600 hover:text-brand-700">
             Create an account
           </Link>
         </>

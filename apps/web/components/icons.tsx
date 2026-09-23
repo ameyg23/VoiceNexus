@@ -6,7 +6,7 @@ type IconProps = { className?: string };
 export function LogoMark({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2563eb" />
+      <rect x="0.5" y="0.5" width="23" height="23" rx="6" className="fill-brand-600" />
       <path
         d="M6 13v-2M9.5 15.5v-7M13 17v-10M16.5 14.5v-5M20 12.5v-1"
         stroke="white"
@@ -237,6 +237,24 @@ export function MenuIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function PencilIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M13.5 6.5l4 4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+export function PowerIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M12 3v9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M6.5 6.8a8 8 0 1 0 11 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

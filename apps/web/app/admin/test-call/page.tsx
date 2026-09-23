@@ -164,7 +164,7 @@ export default function TestCallPage() {
                 </button>
               </>
             ) : (
-              <button onClick={() => void placeCall()} className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+              <button onClick={() => void placeCall()} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
                 Call care line
               </button>
             )}
@@ -207,7 +207,7 @@ export default function TestCallPage() {
               {latestCall ? (
                 <p className="text-sm text-gray-700">
                   Latest phone call:{" "}
-                  <Link href={`/admin/calls/${latestCall.id}`} className="font-medium text-blue-600 hover:text-blue-700">
+                  <Link href={`/admin/calls/${latestCall.id}`} className="font-medium text-brand-600 hover:text-brand-700">
                     {latestCall.id}
                   </Link>{" "}
                   ({latestCall.turnCount} transcript turns)

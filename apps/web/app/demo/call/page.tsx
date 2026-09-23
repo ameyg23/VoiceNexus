@@ -308,7 +308,7 @@ export default function DemoCallPage() {
               id="customer"
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             >
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -319,7 +319,7 @@ export default function DemoCallPage() {
             <button
               onClick={() => void handleStart()}
               disabled={!selectedId || isBusy}
-              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isBusy ? "Starting…" : "Start Call"}
             </button>
@@ -339,7 +339,7 @@ export default function DemoCallPage() {
                 <div key={i} className="flex gap-3 rounded-lg bg-gray-50 p-3">
                   <div
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                      t.speaker === "AI" ? "bg-blue-100 text-blue-600" : "bg-gray-200 text-gray-600"
+                      t.speaker === "AI" ? "bg-brand-100 text-brand-600" : "bg-gray-200 text-gray-600"
                     }`}
                   >
                     {t.speaker === "AI" ? <WaveformIcon className="h-4 w-4" /> : <PersonIcon className="h-4 w-4" />}
@@ -363,7 +363,7 @@ export default function DemoCallPage() {
                 onClick={handleListen}
                 disabled={!micSupported || isListening || isBusy}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                  isListening ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
+                  isListening ? "bg-amber-500 hover:bg-amber-600" : "bg-brand-600 hover:bg-brand-700"
                 }`}
               >
                 <MicIcon className="h-4 w-4" />
@@ -375,7 +375,7 @@ export default function DemoCallPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleManualSend()}
                 placeholder="…or type what you'd say"
                 disabled={isBusy}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50"
               />
               <button
                 onClick={handleManualSend}
@@ -409,12 +409,12 @@ export default function DemoCallPage() {
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 onClick={handleReset}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700"
               >
                 Start another call
               </button>
               {conversationId && (
-                <Link href={`/admin/calls/${conversationId}`} className="text-sm font-medium text-blue-600 hover:text-blue-700">
+                <Link href={`/admin/calls/${conversationId}`} className="text-sm font-medium text-brand-600 hover:text-brand-700">
                   View this call in the dashboard →
                 </Link>
               )}

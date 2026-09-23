@@ -91,7 +91,7 @@ function ActionTable({ rows, onMark }: { rows: CallAction[]; onMark?: (id: numbe
               </td>
               <td className="py-3 pr-4 text-gray-600">
                 {a.customerId ? (
-                  <Link href={`/admin/customers/${a.customerId}`} className="hover:text-blue-600">
+                  <Link href={`/admin/customers/${a.customerId}`} className="hover:text-brand-600">
                     {a.customerName ?? a.customerId}
                   </Link>
                 ) : (
@@ -101,7 +101,7 @@ function ActionTable({ rows, onMark }: { rows: CallAction[]; onMark?: (id: numbe
               </td>
               <td className="max-w-80 py-3 pr-4 text-gray-600">{detailText(a)}</td>
               <td className="py-3 pr-4">
-                <Link href={`/admin/calls/${a.conversationId}`} className="text-blue-600 hover:text-blue-700">
+                <Link href={`/admin/calls/${a.conversationId}`} className="text-brand-600 hover:text-brand-700">
                   {a.conversationId}
                 </Link>
               </td>
@@ -110,7 +110,7 @@ function ActionTable({ rows, onMark }: { rows: CallAction[]; onMark?: (id: numbe
               </td>
               {onMark && (
                 <td className="whitespace-nowrap py-3 pr-4 text-right">
-                  <button onClick={() => onMark(a.id, "DONE")} className="rounded-md px-2 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50">
+                  <button onClick={() => onMark(a.id, "DONE")} className="rounded-md px-2 py-1 text-sm font-medium text-brand-600 hover:bg-brand-50">
                     Mark done
                   </button>
                   <button onClick={() => onMark(a.id, "CANCELLED")} className="rounded-md px-2 py-1 text-sm font-medium text-gray-500 hover:bg-gray-100">

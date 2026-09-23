@@ -8,7 +8,7 @@ import { CallsTable } from "../../../components/CallsTable";
 import { SearchIcon } from "../../../components/icons";
 import { INTENT_LABELS, OUTCOME_LABELS, AUTH_METHOD_LABELS, formatDuration, intentLabel } from "../../../lib/format";
 
-const selectClass = "rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none";
+const selectClass = "rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none";
 
 export default function CallsPage() {
   const [q, setQ] = useState("");
@@ -87,7 +87,7 @@ export default function CallsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search call ID, caller, BAN, customer, transcript…"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:bg-white focus:outline-none"
             />
           </label>
           <select value={outcome} onChange={(e) => setOutcome(e.target.value as CallOutcome | "")} className={selectClass} aria-label="Status">

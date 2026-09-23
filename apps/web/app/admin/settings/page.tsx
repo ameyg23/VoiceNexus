@@ -75,7 +75,7 @@ export default function SettingsPage() {
         form && (
           <div className="flex items-center gap-3">
             {savedAt && <span className="text-xs text-gray-500">Saved {savedAt} · applies to new calls</span>}
-            <button onClick={() => void save()} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-60">
+            <button onClick={() => void save()} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-60">
               {saving ? "Saving…" : "Save changes"}
             </button>
           </div>
@@ -224,7 +224,7 @@ function readableError(err: unknown): string {
   return `Couldn't save: ${msg}`;
 }
 
-const fieldClass = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+const fieldClass = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20";
 
 function TextField({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -270,7 +270,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-blue-600" : "bg-gray-300"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-brand-600" : "bg-gray-300"}`}
       >
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${checked ? "left-5" : "left-0.5"}`} />
       </button>
@@ -328,7 +328,7 @@ function Rows({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
-const inputClass = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+const inputClass = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20";
 
 function AddAdminForm() {
   const [name, setName] = useState("");
@@ -369,7 +369,7 @@ function AddAdminForm() {
         <span className="mb-1 block text-gray-600">Temporary password</span>
         <input type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
       </label>
-      <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+      <button type="submit" disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
         {saving ? "Adding…" : "Add admin"}
       </button>
       {status && <p className={`text-sm sm:col-span-4 ${status.ok ? "text-green-700" : "text-red-600"}`}>{status.text}</p>}

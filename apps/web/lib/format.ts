@@ -18,6 +18,24 @@ export const INTENT_LABELS: Record<Intent, string> = {
   UNKNOWN: "Unknown",
 };
 
+// What a caller wants, as a phrase that reads naturally in a sentence ("help with ___").
+export const INTENT_PHRASES: Record<Intent, string> = {
+  CHECK_BALANCE: "their balance",
+  MAKE_PAYMENT: "making a payment",
+  PAYMENT_HISTORY: "a past payment",
+  BILLING_DUE_DATE: "their bill due date",
+  PAYMENT_PROMISE: "a payment arrangement",
+  PLAN_INFO: "their plan",
+  PLAN_CHANGE: "changing their plan",
+  AUTOPAY_STATUS: "autopay",
+  OUTAGE_CHECK: "a possible outage",
+  TECH_TRIAGE: "a technical problem",
+  SCHEDULE_TECH: "a technician visit",
+  SCHEDULE_CALLBACK: "a callback",
+  AGENT_REQUEST: "speaking to an agent",
+  UNKNOWN: "an unclear request",
+};
+
 export function intentLabel(intent: Intent | null | undefined): string {
   return intent ? (INTENT_LABELS[intent] ?? intent) : "—";
 }

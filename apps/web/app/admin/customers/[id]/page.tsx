@@ -28,7 +28,7 @@ export default function CustomerDetailPage() {
     <AdminShell
       title={c ? c.name : id}
       subtitle={
-        <Link href="/admin/customers" className="text-blue-600 hover:text-blue-700">
+        <Link href="/admin/customers" className="text-brand-600 hover:text-brand-700">
           ← All customers
         </Link>
       }
@@ -71,7 +71,7 @@ export default function CustomerDetailPage() {
                     <span className="flex items-center gap-3 text-gray-500">
                       {a.scheduledFor ? formatDateOnly(a.scheduledFor) : formatDateTime(a.createdAt)}
                       <Badge tone={a.status === "SCHEDULED" ? "warning" : a.status === "CANCELLED" ? "neutral" : "success"}>{a.status.toLowerCase()}</Badge>
-                      <Link href={`/admin/calls/${a.conversationId}`} className="text-blue-600 hover:text-blue-700">
+                      <Link href={`/admin/calls/${a.conversationId}`} className="text-brand-600 hover:text-brand-700">
                         {a.conversationId}
                       </Link>
                     </span>

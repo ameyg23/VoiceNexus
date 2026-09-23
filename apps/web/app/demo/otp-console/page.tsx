@@ -69,12 +69,12 @@ export default function OtpConsolePage() {
               onChange={(e) => setConversationId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && lookup()}
               placeholder="VN-000001"
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
             <button
               onClick={() => void lookup()}
               disabled={loading || !conversationId.trim()}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Looking up…" : "Look up"}
             </button>

@@ -51,15 +51,15 @@ export function AdminShell({
           <LogoMark className="h-6 w-6" />
           <span className="font-bold text-gray-900">VoiceNexus</span>
         </header>
-      <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <main className="mx-auto min-w-0 max-w-[1400px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">{title}</h1>
+            {subtitle && <p className="mt-2 text-[15px] text-gray-500">{subtitle}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </div>
-        <div className="mt-6">{children}</div>
+        <div className="mt-8">{children}</div>
       </main>
       </div>
     </div>
@@ -68,20 +68,20 @@ export function AdminShell({
 
 export function Card({ title, subtitle, children, className = "" }: { title?: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 ${className}`}>
-      {title && <h2 className="text-sm font-semibold text-gray-900">{title}</h2>}
-      {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
-      <div className={title || subtitle ? "mt-4" : ""}>{children}</div>
+    <section className={`min-w-0 rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(16,24,40,0.06)] sm:p-7 ${className}`}>
+      {title && <h2 className="text-base font-semibold text-gray-900">{title}</h2>}
+      {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+      <div className={title || subtitle ? "mt-5" : ""}>{children}</div>
     </section>
   );
 }
 
 export function StatTile({ label, value, hint }: { label: string; value: React.ReactNode; hint?: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
-      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+    <div className="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+      <p className="text-sm font-medium text-gray-600">{label}</p>
+      <p className="mt-3 text-[26px] font-bold leading-none text-gray-900 tabular-nums">{value}</p>
+      {hint && <p className="mt-3 text-xs text-gray-500">{hint}</p>}
     </div>
   );
 }

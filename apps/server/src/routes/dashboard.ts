@@ -88,7 +88,10 @@ dashboardRouter.get("/summary", (_req, res) => {
     .prepare(`SELECT type, COUNT(*) as count FROM call_actions WHERE status <> 'CANCELLED' GROUP BY type`)
     .all() as { type: string; count: number }[];
 
-  res.json({ ...computeKpis(), authMethods, intents, actions, recentCalls: listConversations("", {}, 6) });
+  // Callbacks booked but not yet made — the reference dashboard's "Callback Backlog".
+  const callbackBacklog = (db.prepare(`SELECT COUNT(*) as n FROM call_actions WHERE type = 'CALLBACK' AND status = 'SCHEDULED'`).get() as { n: number }).n;
+
+  res.json({ ...computeKpis(), callbackBacklog, authMethods, intents, actions, recentCalls: listConversations("", {}, 8) });
 });
 
 const reportsQuery = z.object({

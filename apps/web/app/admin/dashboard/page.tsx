@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchDashboardSummary, type DashboardSummary } from "../../../lib/api";
 import { AdminShell, Card, ErrorNote, StatTile } from "../../../components/AdminShell";
-import { BarList, StackedBar, OUTCOME_COLORS } from "../../../components/charts";
-import { CallsTable } from "../../../components/CallsTable";
-import { ACTION_LABELS, AUTH_METHOD_LABELS, formatDuration, formatMoney, formatRate, intentLabel, percent } from "../../../lib/format";
+import { Donut, Gauge } from "../../../components/charts";
+import { Badge } from "../../../components/Badge";
+import { OUTCOME_LABELS, OUTCOME_TONES, formatDateTime, formatDuration, formatMoney, intentLabel } from "../../../lib/format";
+
+// Status colors for the three rate gauges — good (contained), serious (sent to a human), neutral/brand.
+const GAUGE = { containment: "#16a34a", escalated: "#d97706", callback: "#0d9a86" };
 
 export default function AdminDashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -19,89 +22,80 @@ export default function AdminDashboardPage() {
   }, []);
 
   const s = summary;
+  const of = (n: number) => `${n} of ${s?.finishedCalls ?? 0} calls`;
 
   return (
-    <AdminShell title="Dashboard overview" subtitle="Live snapshot from every call so far.">
+    <AdminShell title="Dashboard overview" subtitle="Live snapshot from every call so far">
       <ErrorNote error={error} />
       {s && (
         <>
           {s.handoffs.waiting > 0 && (
             <Link
               href="/admin/escalations"
-              className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900 hover:bg-amber-100"
+              className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-900 hover:bg-amber-100"
             >
               <span>
                 <strong>{s.handoffs.waiting}</strong> escalated call{s.handoffs.waiting === 1 ? " is" : "s are"} waiting for an agent.
               </span>
-              <span className="font-medium">Open queue →</span>
+              <span className="font-semibold">Open queue →</span>
             </Link>
           )}
 
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatTile label="Total calls" value={s.totalCalls} hint={`${s.finishedCalls} finished · ${s.inProgress} live`} />
-            <StatTile label="Containment rate" value={formatRate(s.containmentRate)} hint={`${s.resolved} resolved end-to-end by the AI`} />
-            <StatTile label="Transfer rate" value={formatRate(s.transferRate)} hint={`${s.escalated} handed to a live agent`} />
-            <StatTile label="Abandonment rate" value={formatRate(s.abandonmentRate)} hint={`${s.abandoned} dropped before resolution`} />
-            <StatTile label="Avg handle time" value={formatDuration(s.avgHandleSeconds)} hint="Connect to close" />
-            <StatTile label="Care CSAT" value={s.csatAverage === null ? "—" : `${s.csatAverage}/5`} hint={`${s.csatResponses} post-call rating${s.csatResponses === 1 ? "" : "s"}`} />
-            <StatTile label="Cost per call" value={formatMoney(s.costPerCall)} hint="Blended, from your rates in Settings" />
-            <StatTile
-              label="Handoffs with full context"
-              value={s.handoffs.total ? percent(s.handoffs.withFullContext, s.handoffs.total) : "—"}
-              hint={`${s.handoffs.withFullContext} of ${s.handoffs.total} verified + intent captured`}
-            />
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+            <StatTile label="Total Calls" value={s.totalCalls} />
+            <StatTile label="Average Handle Time" value={formatDuration(s.avgHandleSeconds)} />
+            <StatTile label="Callback Backlog" value={s.callbackBacklog} />
+            <StatTile label="Cost per Call" value={formatMoney(s.costPerCall)} hint="Blended, your rates" />
+            <StatTile label="Care CSAT" value={s.csatAverage === null ? "—" : `${s.csatAverage}/5`} hint={`${s.csatResponses} of ${s.resolved} rated`} />
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Card title="Call outcomes" subtitle="Every call, by how it ended">
-              <StackedBar
-                segments={[
-                  { label: "Resolved", value: s.resolved, color: OUTCOME_COLORS.RESOLVED },
-                  { label: "Escalated", value: s.escalated, color: OUTCOME_COLORS.ESCALATED },
-                  { label: "Callback booked", value: s.callback, color: OUTCOME_COLORS.CALLBACK },
-                  { label: "Abandoned", value: s.abandoned, color: OUTCOME_COLORS.ABANDONED },
-                  { label: "In progress", value: s.inProgress, color: OUTCOME_COLORS.IN_PROGRESS },
-                ]}
-              />
-              <div className="mt-6 grid gap-6 border-t border-gray-100 pt-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Verified by</p>
-                  <div className="mt-3">
-                    {s.authMethods.length === 0 ? (
-                      <p className="text-sm text-gray-500">No verified calls yet.</p>
-                    ) : (
-                      <BarList data={s.authMethods.map((m) => ({ label: AUTH_METHOD_LABELS[m.method] ?? m.method, value: m.count }))} />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Actions completed</p>
-                  <div className="mt-3">
-                    {s.actions.length === 0 ? (
-                      <p className="text-sm text-gray-500">No transactions yet.</p>
-                    ) : (
-                      <BarList data={s.actions.map((a) => ({ label: ACTION_LABELS[a.type] ?? a.type, value: a.count }))} />
-                    )}
-                  </div>
-                </div>
-              </div>
+            <Card title="Containment Rate">
+              <Gauge value={s.containmentRate} color={GAUGE.containment} caption={of(s.resolved)} description="Share of calls the AI resolved without escalating to a human" />
             </Card>
-
-            <Card title="Intents distribution" subtitle="Primary intent detected per call">
-              {s.intents.length === 0 ? (
-                <p className="text-sm text-gray-500">No intents detected yet.</p>
-              ) : (
-                <BarList
-                  data={s.intents.map((i) => ({ label: intentLabel(i.intent), value: i.count }))}
-                  valueFormat={(v) => `${v} · ${percent(v, s.totalCalls)}`}
-                />
-              )}
+            <Card title="Escalated to Agent">
+              <Gauge value={s.transferRate} color={GAUGE.escalated} caption={of(s.escalated)} description="Share of calls handed off to a live agent" />
+            </Card>
+            <Card title="Callback Rate">
+              <Gauge value={s.callbackRate} color={GAUGE.callback} caption={of(s.callback)} description="Share of calls where a callback was scheduled instead" />
+            </Card>
+            <Card title="Intents Distribution">
+              <Donut data={s.intents.map((i) => ({ label: intentLabel(i.intent), value: i.count }))} centerLabel="Total Calls" />
             </Card>
           </div>
 
           <Card className="mt-6" title="Recent calls">
-            <CallsTable calls={s.recentCalls} />
-            <Link href="/admin/calls" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="py-3 pr-4">Call ID</th>
+                    <th className="py-3 pr-4">Intent</th>
+                    <th className="py-3 pr-4">Time</th>
+                    <th className="py-3 pr-4">Duration</th>
+                    <th className="py-3 pr-4">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.recentCalls.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <td className="whitespace-nowrap py-4 pr-4 font-semibold text-gray-900">
+                        <Link href={`/admin/calls/${c.id}`} className="hover:text-brand-600">
+                          {c.id}
+                        </Link>
+                      </td>
+                      <td className="py-4 pr-4 text-gray-700">{intentLabel(c.detectedIntent)}</td>
+                      <td className="whitespace-nowrap py-4 pr-4 text-gray-600">{formatDateTime(c.startTime)}</td>
+                      <td className="py-4 pr-4 text-gray-600 tabular-nums">{formatDuration(c.durationSeconds)}</td>
+                      <td className="py-4 pr-4">
+                        <Badge tone={OUTCOME_TONES[c.outcome]}>{OUTCOME_LABELS[c.outcome]}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Link href="/admin/calls" className="mt-4 inline-block text-sm font-semibold text-brand-600 hover:text-brand-700">
               View all calls →
             </Link>
           </Card>

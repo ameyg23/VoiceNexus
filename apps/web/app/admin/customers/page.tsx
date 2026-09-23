@@ -37,7 +37,7 @@ export default function CustomersPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search name, BAN, phone, email…"
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:bg-white focus:outline-none"
           />
         </label>
         {!filtered ? (

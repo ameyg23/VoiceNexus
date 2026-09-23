@@ -247,6 +247,7 @@ export interface Kpis {
 }
 
 export interface DashboardSummary extends Kpis {
+  callbackBacklog: number;
   actions: { type: CallActionType; count: number }[];
   authMethods: { method: AuthMethod; count: number }[];
   intents: { intent: Intent; count: number }[];
