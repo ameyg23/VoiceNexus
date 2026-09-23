@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "twilio:setup": "tsx scripts/twilio-setup.ts",
-    "twilio:smoke": "tsx scripts/twilio-webhook-smoke.ts"
+    "twilio:smoke": "tsx scripts/twilio-webhook-smoke.ts",
+    "test:scenarios": "tsx scripts/scenario-test.ts",
+    "eval:intents": "tsx scripts/intent-eval.ts"
   },
   "dependencies": {
     "@voice-nexus/db": "*",

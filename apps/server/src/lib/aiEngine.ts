@@ -9,7 +9,7 @@
 // so callers can fall back to deterministic behavior rather than guessing — same guardrail the
 // regex placeholder followed (ARCHITECTURE.md §11 "never fabricate an answer").
 
-import type { Intent } from "@voice-nexus/shared";
+import { ALL_INTENTS, type Intent } from "@voice-nexus/shared";
 
 // "-lite" tier has a materially higher free-tier requests/minute quota than the "-latest"
 // flash alias (which resolves to the newest full flash model, capped at 5 req/min free —
@@ -124,55 +124,117 @@ export async function extractOtpAI(utterance: string): Promise<string | null> {
 
 // --- Intent classification ---
 
-const INTENTS: Intent[] = [
-  "CHECK_BALANCE",
-  "MAKE_PAYMENT",
-  "PAYMENT_HISTORY",
-  "BILLING_DUE_DATE",
-  "PLAN_INFO",
-  "AUTOPAY_STATUS",
-  "TECH_TRIAGE",
-  "UNKNOWN",
-];
+const INTENT_DESCRIPTIONS: Record<Intent, string> = {
+  CHECK_BALANCE: "asking what they currently owe / their balance",
+  MAKE_PAYMENT: "wants to pay their bill now",
+  PAYMENT_HISTORY: "asking about a past payment or whether a payment went through",
+  BILLING_DUE_DATE: "asking when their next bill is due",
+  PAYMENT_PROMISE: "can't pay now and wants to arrange to pay later / by a certain date (payment arrangement, extension)",
+  PLAN_INFO: "asking what plan they're on, its speed, price or discount",
+  PLAN_CHANGE: "wants to upgrade, downgrade, switch or change their plan, or asks what other plans exist",
+  AUTOPAY_STATUS: "asking whether autopay / automatic payments are on",
+  OUTAGE_CHECK: "asking whether there's a service outage in their area",
+  TECH_TRIAGE: "reporting a technical problem (no internet, slow, Wi-Fi dropping, TV not working)",
+  SCHEDULE_TECH: "explicitly wants a technician visit / someone to come out",
+  SCHEDULE_CALLBACK: "wants someone to call them back later",
+  AGENT_REQUEST: "wants to speak to a human / live agent / representative",
+  UNKNOWN: "anything else, small talk, or unclear",
+};
 
 // Returns null only when the AI itself is unavailable (so extraction.ts can fall back to keywords);
-// a confident "can't tell" comes back as UNKNOWN.
-export async function classifyIntentAI(utterance: string): Promise<Intent | null> {
+// a confident "can't tell" comes back as UNKNOWN. Operator-curated example utterances (tenant settings)
+// are included as hints.
+export async function classifyIntentAI(utterance: string, examples: Partial<Record<Intent, string[]>> = {}): Promise<Intent | null> {
+  const lines = ALL_INTENTS.map((i) => {
+    const ex = examples[i]?.length ? ` Examples: ${examples[i]!.map((e) => `"${e}"`).join(", ")}.` : "";
+    return `- ${i}: ${INTENT_DESCRIPTIONS[i]}.${ex}`;
+  });
   const result = await callGemini(
     `You classify a telecom customer support caller's utterance into exactly one intent from this ` +
-      `fixed list: ${INTENTS.join(", ")}.\n` +
-      `- CHECK_BALANCE: asking what they currently owe.\n` +
-      `- MAKE_PAYMENT: wants to pay their bill now.\n` +
-      `- PAYMENT_HISTORY: asking about a past payment.\n` +
-      `- BILLING_DUE_DATE: asking when their next bill is due.\n` +
-      `- PLAN_INFO: asking about their plan, discount, or pricing.\n` +
-      `- AUTOPAY_STATUS: asking whether autopay is on/off.\n` +
-      `- TECH_TRIAGE: reporting a technical problem (no internet, slow service, outage, etc).\n` +
-      `- UNKNOWN: anything else, small talk, or unclear.\n` +
-      `Return exactly one of these strings, nothing else.`,
+      `fixed list:\n${lines.join("\n")}\nReturn exactly one of these strings, nothing else.`,
     utterance,
-    { type: "object", properties: { intent: { type: "string", enum: INTENTS } }, required: ["intent"] }
+    { type: "object", properties: { intent: { type: "string", enum: [...ALL_INTENTS] } }, required: ["intent"] }
   );
 
   if (!result) return null;
   const intent = result.intent as Intent | undefined;
-  return intent && INTENTS.includes(intent) ? intent : "UNKNOWN";
+  return intent && ALL_INTENTS.includes(intent) ? intent : "UNKNOWN";
+}
+
+// --- Subflow slot extraction ---
+
+export async function classifyYesNoAI(utterance: string, question: string): Promise<"YES" | "NO" | null> {
+  const result = await callGemini(
+    `A phone caller was asked a yes/no question. Decide whether their reply means YES, NO, or is UNCLEAR ` +
+      `(e.g. they asked something else, or hedged). Only answer YES when the caller clearly agrees.`,
+    `Question: ${question}\nCaller's reply: ${utterance}`,
+    { type: "object", properties: { answer: { type: "string", enum: ["YES", "NO", "UNCLEAR"] } }, required: ["answer"] }
+  );
+  return result?.answer === "YES" || result?.answer === "NO" ? result.answer : null;
+}
+
+export async function extractDateAI(utterance: string, todayIso: string): Promise<string | null> {
+  const result = await callGemini(
+    `Today is ${todayIso}. Extract the calendar date the caller means from their spoken reply, resolving ` +
+      `relative expressions ("next Tuesday", "end of the month", "the 3rd") against today. Return it as ` +
+      `YYYY-MM-DD, or null if they didn't name a date. Never guess a date they didn't express.`,
+    utterance,
+    { type: "object", properties: { date: { type: "string", nullable: true } }, required: ["date"] }
+  );
+  const date = typeof result?.date === "string" ? result.date.trim() : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+export async function extractPlanAI(utterance: string, planNames: string[]): Promise<string | null> {
+  const result = await callGemini(
+    `A caller is choosing a new service plan. Which ONE of these plans did they ask for: ` +
+      `${planNames.map((p) => `"${p}"`).join(", ")}? Return the exact plan name, or null if they didn't ` +
+      `clearly pick one.`,
+    utterance,
+    { type: "object", properties: { plan: { type: "string", nullable: true, enum: [...planNames] } }, required: ["plan"] }
+  );
+  return typeof result?.plan === "string" && planNames.includes(result.plan) ? result.plan : null;
 }
 
 // --- Response phrasing (NLG only — the caller decides WHAT data is authorized to share; this only
 // decides HOW to say it) ---
 
-export async function phraseResponseAI(instruction: string, data: unknown): Promise<string | null> {
+export interface VoiceStyle {
+  brandName: string;
+  assistantName: string;
+  tone: string; // operator brand voice (tenant settings)
+  languageName: string; // e.g. "English", "Spanish"
+}
+
+export async function phraseResponseAI(instruction: string, data: unknown, style?: VoiceStyle): Promise<string | null> {
+  const voice = style
+    ? `You are ${style.assistantName}, the phone assistant for ${style.brandName}. Brand voice: ${style.tone}. Reply in ${style.languageName}. `
+    : "";
   const result = await callGemini(
-    `You are the voice of a phone support agent, speaking a short reply out loud to a caller. ` +
+    voice +
+      `You are the voice of a phone support agent, speaking a short reply out loud to a caller. ` +
       `You will be given an instruction describing what to convey, and a JSON object of data that has ` +
-      `already been cleared for you to share. Phrase a natural, warm, concise spoken-style reply ` +
+      `already been cleared for you to share. Phrase a natural, concise spoken-style reply ` +
       `(1-2 sentences). Use ONLY the numbers/values present in the data — never invent or estimate a ` +
       `number that isn't there. Never mention JSON, field names, or that you were given data. If a data ` +
       `value is null or missing, do not mention that field at all.`,
-    `Instruction: ${instruction}\nData: ${JSON.stringify(data)}`,
+    `Instruction: ${instruction}
+Data: ${JSON.stringify(data)}`,
     { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
   );
 
+  return typeof result?.text === "string" && result.text.trim() ? result.text.trim() : null;
+}
+
+// Language selection (VN-7): fixed prompts are written in English; for another tenant language they're
+// translated at speak time. Numbers, dates, plan names and codes must survive unchanged. Returns null on
+// any failure, and the caller then speaks the English original rather than nothing.
+export async function translateAI(text: string, languageName: string): Promise<string | null> {
+  const result = await callGemini(
+    `Translate this phone assistant's spoken reply into natural, polite ${languageName}. Keep every number, ` +
+      `amount, date, account number, plan name and brand name exactly as written. Output only the translation.`,
+    text,
+    { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+  );
   return typeof result?.text === "string" && result.text.trim() ? result.text.trim() : null;
 }

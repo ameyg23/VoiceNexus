@@ -19,7 +19,8 @@ import express, { Router, type Request, type Response, type NextFunction } from 
 import twilio from "twilio";
 import { db } from "@voice-nexus/db";
 import { advanceAuthSession, type TurnResult } from "../lib/authStateMachine.js";
-import { startConversation, appendTurn, endConversation, GREETING } from "../lib/conversations.js";
+import { startConversation, appendTurn, endConversation, greetingText } from "../lib/conversations.js";
+import { getSettings, toSpeech } from "../lib/settings.js";
 import { saveRecording } from "../lib/recordings.js";
 import { requireEmployeeAuth } from "../lib/auth.js";
 
@@ -28,7 +29,8 @@ const { VoiceResponse } = twilio.twiml;
 export const twilioRouter = Router();
 twilioRouter.use(express.urlencoded({ extended: false }));
 
-const SPEECH_HINTS = "account number, BAN, PIN, resend, balance, payment, due date, plan, autopay, internet, goodbye";
+const SPEECH_HINTS =
+  "account number, BAN, PIN, resend, balance, payment, due date, payment arrangement, plan, upgrade, autopay, internet, outage, technician, callback, agent, yes, no, goodbye";
 // Twilio abandons a webhook after 15s. A turn can make several Gemini calls (each with its own
 // timeout + retry), so we answer within this budget and, if the turn isn't done, keep the caller on
 // the line with a short pause + <Redirect> to /pending until it is.
@@ -58,8 +60,14 @@ function sendTwiml(res: Response, twiml: InstanceType<typeof VoiceResponse>) {
   res.type("text/xml").send(twiml.toString());
 }
 
-function say(twiml: InstanceType<typeof VoiceResponse> | ReturnType<InstanceType<typeof VoiceResponse>["gather"]>, text: string) {
-  twiml.say({ language: "en-US" }, text);
+type SayTarget = InstanceType<typeof VoiceResponse> | ReturnType<InstanceType<typeof VoiceResponse>["gather"]>;
+type SayAttrs = Parameters<InstanceType<typeof VoiceResponse>["say"]>[0];
+
+// Brand voice + language from tenant settings, with pronunciation overrides applied to what's spoken
+// (the transcript keeps the original text) — PRD VN-7.
+function say(twiml: SayTarget, text: string) {
+  const s = getSettings();
+  twiml.say({ voice: s.phoneVoice, language: s.language } as SayAttrs, toSpeech(text, s));
 }
 
 // Speak `text` inside a <Gather> so the caller can barge in, and loop back to /gather either way
@@ -71,7 +79,7 @@ function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string
     method: "POST",
     speechTimeout: "auto",
     timeout: 6,
-    language: "en-US",
+    language: getSettings().language as "en-US",
     hints: SPEECH_HINTS,
     actionOnEmptyResult: true,
   });
@@ -80,7 +88,13 @@ function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string
 
 function speakResult(res: Response, conversationId: string, result: TurnResult) {
   const twiml = new VoiceResponse();
-  if (result.endCall) {
+  const agentLine = getSettings().agentTransferNumber;
+  if (result.transfer && agentLine) {
+    // Live-agent transfer: the structured handoff is already in the escalation queue (VN-5).
+    say(twiml, result.aiText);
+    twiml.dial({ callerId: process.env.TWILIO_CARE_LINE_NUMBER || undefined }).number(agentLine);
+    endConversation(conversationId);
+  } else if (result.endCall) {
     say(twiml, result.aiText);
     twiml.hangup();
     endConversation(conversationId);
@@ -105,31 +119,35 @@ function hangUpWith(res: Response, text: string) {
 
 // Starts (or, on a Twilio retry of the same CallSid, resumes) the conversation and greets the caller.
 // ANI is the caller's number — display-only, never used for auth (ARCHITECTURE.md §18).
-function answerCall(req: Request, res: Response, ani: string) {
+async function answerCall(req: Request, res: Response, ani: string) {
   const callSid: string = req.body.CallSid;
   const existing = conversationForCall(callSid);
-  const conversationId = existing ?? startConversation(ani, "PHONE", callSid);
+  const greeting = await greetingText();
+  const conversationId = existing ?? startConversation(ani, "PHONE", greeting, callSid);
   if (!existing) console.log(`[twilio] call ${callSid} from ${ani} → ${conversationId}`);
 
   const twiml = new VoiceResponse();
-  // Native Twilio recording replaces the browser MediaRecorder for phone calls (ARCHITECTURE.md §19).
-  twiml.start().recording({
-    channels: "dual",
-    recordingStatusCallback: publicUrl("/api/twilio/recording"),
-    recordingStatusCallbackEvent: ["completed"],
-  });
-  promptAndListen(twiml, GREETING);
+  // Native Twilio recording replaces the browser MediaRecorder for phone calls (ARCHITECTURE.md §19),
+  // unless operations has switched recording off (compliance — PRD §9).
+  if (getSettings().recordingEnabled) {
+    twiml.start().recording({
+      channels: "dual",
+      recordingStatusCallback: publicUrl("/api/twilio/recording"),
+      recordingStatusCallbackEvent: ["completed"],
+    });
+  }
+  promptAndListen(twiml, greeting);
   sendTwiml(res, twiml);
 }
 
-twilioRouter.post("/voice", validateTwilioSignature, (req, res) => {
-  answerCall(req, res, req.body.From ?? "unknown");
+twilioRouter.post("/voice", validateTwilioSignature, async (req, res) => {
+  await answerCall(req, res, req.body.From ?? "unknown");
 });
 
 // In-flight turns keyed by CallSid, so /pending can pick up a turn that outlived TURN_BUDGET_MS.
 const pendingTurns = new Map<string, Promise<TurnResult>>();
 
-async function respondWithinBudget(res: Response, callSid: string, conversationId: string) {
+async function respondWithinBudget(res: Response, callSid: string, conversationId: string, alreadyHeld = false) {
   const turn = pendingTurns.get(callSid);
   if (!turn) {
     // Nothing in flight (e.g. server restarted mid-turn) — just listen again.
@@ -142,8 +160,10 @@ async function respondWithinBudget(res: Response, callSid: string, conversationI
   const outcome = await Promise.race([turn, timeout]);
   if (outcome === "timeout") {
     const twiml = new VoiceResponse();
-    twiml.pause({ length: 1 });
-    twiml.redirect({ method: "POST" }, publicUrl("/api/twilio/pending"));
+    // The operator's hold prompt (VN-9), once per slow turn, then silence while it finishes.
+    if (!alreadyHeld) say(twiml, getSettings().holdPrompt);
+    else twiml.pause({ length: 1 });
+    twiml.redirect({ method: "POST" }, publicUrl("/api/twilio/pending?held=1"));
     return sendTwiml(res, twiml);
   }
 
@@ -172,13 +192,14 @@ twilioRouter.post("/gather", validateTwilioSignature, async (req, res) => {
   }
 
   appendTurn(conversationId, "CUSTOMER", utterance);
+  const started = Date.now();
   const turn = advanceAuthSession(conversationId, utterance)
     .catch((err): TurnResult => {
       console.error(err);
       return { aiText: "Sorry, I ran into a problem. Could you say that again?", stage: "AWAITING_INTENT", authStatus: "PENDING" };
     })
     .then((result) => {
-      appendTurn(conversationId, "AI", result.aiText);
+      appendTurn(conversationId, "AI", result.aiText, Date.now() - started);
       return result;
     });
   pendingTurns.set(callSid, turn);
@@ -190,7 +211,7 @@ twilioRouter.post("/pending", validateTwilioSignature, async (req, res) => {
   const callSid: string = req.body.CallSid;
   const conversationId = conversationForCall(callSid);
   if (!conversationId) return hangUpWith(res, "Sorry, something went wrong with this call. Please call back.");
-  await respondWithinBudget(res, callSid, conversationId);
+  await respondWithinBudget(res, callSid, conversationId, req.query.held === "1");
 });
 
 const FINAL_CALL_STATUSES = new Set(["completed", "busy", "failed", "no-answer", "canceled"]);
@@ -230,7 +251,7 @@ async function downloadRecording(conversationId: string, recordingUrl: string) {
 twilioRouter.post("/client-voice", validateTwilioSignature, (req, res) => {
   const careLine = process.env.TWILIO_CARE_LINE_NUMBER;
   if (req.body.mode === "direct" || !careLine) {
-    return answerCall(req, res, String(req.body.From ?? "client:browser"));
+    return void answerCall(req, res, String(req.body.From ?? "client:browser"));
   }
   const twiml = new VoiceResponse();
   twiml.dial({ callerId: careLine }).number(careLine);

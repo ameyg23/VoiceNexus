@@ -96,6 +96,12 @@ const employees = [
 ];
 
 // Demo-only website password, derived so it never needs looking up: first name, lowercased.
+// Service ZIPs (outage checks). 62704 has the seeded active outage (migration 005).
+const SERVICE_ZIPS: Record<string, string> = {
+  CUS001: "62701", CUS002: "62702", CUS003: "62703", CUS004: "62701", CUS005: "62702",
+  CUS006: "62703", CUS007: "62701", CUS008: "62704", CUS009: "62704",
+};
+
 function portalPassword(name: string): string {
   return `${name.split(" ")[0].toLowerCase()}-demo-pass`;
 }
@@ -107,12 +113,12 @@ function main() {
       id, name, phone_number, ban, pin_hash, email, mfa_enabled, mfa_method,
       current_balance, last_payment_amount, last_payment_date, next_billing_due_date,
       past_due_amount, discount_percent, autopay_enabled, plan_name, account_status,
-      portal_password_hash
+      portal_password_hash, service_zip
     ) VALUES (
       @id, @name, @phoneNumber, @ban, @pinHash, @email, @mfaEnabled, @mfaMethod,
       @currentBalance, @lastPaymentAmount, @lastPaymentDate, @nextBillingDueDate,
       @pastDueAmount, @discountPercent, @autopayEnabled, @planName, @accountStatus,
-      @portalPasswordHash
+      @portalPasswordHash, @serviceZip
     )
   `);
 
@@ -138,6 +144,7 @@ function main() {
         "@planName": c.planName,
         "@accountStatus": c.accountStatus,
         "@portalPasswordHash": bcrypt.hashSync(portalPassword(c.name), 10),
+        "@serviceZip": SERVICE_ZIPS[c.id] ?? "62701",
       });
     }
     db.exec("COMMIT");

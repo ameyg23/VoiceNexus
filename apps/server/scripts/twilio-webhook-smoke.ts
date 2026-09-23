@@ -74,9 +74,10 @@ async function main() {
     ["intent (speech)", { SpeechResult: "I want to check my balance" }, (t) => /account number|BAN/i.test(t.says.join(" "))],
     ["silence re-prompts instead of guessing", { SpeechResult: "" }, (t) => /didn't hear/i.test(t.says.join(" ")) && !t.hangup],
     ["BAN (keypad DTMF)", { Digits: "100001" }, (t) => /PIN/i.test(t.says.join(" "))],
-    ["PIN spoken digit-by-digit", { SpeechResult: "4 8 2 1" }, (t) => /verified/i.test(t.says.join(" "))],
-    ["authenticated question", { SpeechResult: "what's my balance" }, (t) => t.says.length > 0 && !t.hangup],
-    ["goodbye hangs up", { SpeechResult: "that's all, goodbye" }, (t) => t.hangup],
+    ["PIN spoken digit-by-digit → verified, balance answered", { SpeechResult: "4 8 2 1" }, (t) => /verified.*\$\d/i.test(t.says.join(" "))],
+    ["authenticated question", { SpeechResult: "when is my bill due" }, (t) => t.says.length > 0 && !t.hangup],
+    ["goodbye → CSAT question", { SpeechResult: "that's all, goodbye" }, (t) => /scale of 1 to 5/i.test(t.says.join(" ")) && !t.hangup],
+    ["rating by keypad → hangs up", { Digits: "4" }, (t) => t.hangup],
   ];
 
   let action = a.action!;

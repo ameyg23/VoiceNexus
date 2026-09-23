@@ -61,12 +61,12 @@ customerAuthRouter.post("/signup", (req, res) => {
       id, name, phone_number, ban, pin_hash, email, mfa_enabled, mfa_method,
       current_balance, last_payment_amount, last_payment_date, next_billing_due_date,
       past_due_amount, discount_percent, autopay_enabled, plan_name, account_status,
-      portal_password_hash
+      portal_password_hash, service_zip
     ) VALUES (
       @id, @name, @phone, @ban, @pinHash, @email, 0, 'NONE',
       0, 0, NULL, NULL,
       0, 0, 0, 'Starter', 'ACTIVE',
-      @portalHash
+      @portalHash, '62701'
     )
   `).run({
     "@id": id,

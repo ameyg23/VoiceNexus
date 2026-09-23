@@ -29,7 +29,8 @@ export type AuthMethod = "PIN" | "EMAIL_OTP" | "SMS_OTP";
 export type ConversationStatus = "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
 export type Channel = "DEMO" | "PHONE";
 // Dashboard-facing outcome, derived server-side from auth_status + status (apps/server/src/lib/outcome.ts).
-export type CallOutcome = "RESOLVED" | "ESCALATED" | "ABANDONED" | "IN_PROGRESS";
+// CALLBACK = a follow-up call was booked instead of resolving in-flow (not contained, not transferred).
+export type CallOutcome = "RESOLVED" | "ESCALATED" | "CALLBACK" | "ABANDONED" | "IN_PROGRESS";
 
 export interface Conversation {
   id: string; // display code VN-000001
@@ -100,13 +101,45 @@ export interface Employee {
   role: EmployeeRole;
 }
 
-// Intents recognized by the AI engine (VN-1 / VN-4 scope: billing, account, plan, simple tech triage).
+// Intents recognized by the AI engine — the operator's top care intents (PRD VN-1/VN-4: billing,
+// account, plan, payment promise, outage/tech triage, dispatch, scheduling, agent transfer).
 export type Intent =
   | "CHECK_BALANCE"
   | "MAKE_PAYMENT"
   | "PAYMENT_HISTORY"
   | "BILLING_DUE_DATE"
+  | "PAYMENT_PROMISE"
   | "PLAN_INFO"
+  | "PLAN_CHANGE"
   | "AUTOPAY_STATUS"
+  | "OUTAGE_CHECK"
   | "TECH_TRIAGE"
+  | "SCHEDULE_TECH"
+  | "SCHEDULE_CALLBACK"
+  | "AGENT_REQUEST"
   | "UNKNOWN";
+
+export const ALL_INTENTS: readonly Intent[] = [
+  "CHECK_BALANCE",
+  "MAKE_PAYMENT",
+  "PAYMENT_HISTORY",
+  "BILLING_DUE_DATE",
+  "PAYMENT_PROMISE",
+  "PLAN_INFO",
+  "PLAN_CHANGE",
+  "AUTOPAY_STATUS",
+  "OUTAGE_CHECK",
+  "TECH_TRIAGE",
+  "SCHEDULE_TECH",
+  "SCHEDULE_CALLBACK",
+  "AGENT_REQUEST",
+  "UNKNOWN",
+];
+
+export type CallActionType = "PAYMENT" | "PLAN_CHANGE" | "PAYMENT_PROMISE" | "TECH_VISIT" | "CALLBACK";
+export type CallActionStatus = "COMPLETED" | "SCHEDULED" | "DONE" | "CANCELLED";
+
+export type EscalationReason = "PIN_LOCKOUT" | "OTP_FAILED" | "VERIFICATION_FAILED" | "CALLER_REQUESTED" | "UNRESOLVED_REQUEST";
+export type EscalationStatus = "WAITING" | "ACCEPTED" | "RESOLVED";
+
+export type Language = "en-US" | "es-US" | "hi-IN";

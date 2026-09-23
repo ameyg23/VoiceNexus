@@ -14,6 +14,8 @@ import { dashboardRouter } from "./routes/dashboard.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { customersRouter } from "./routes/customers.js";
 import { twilioRouter } from "./routes/twilio.js";
+import { settingsRouter, escalationsRouter, actionsRouter } from "./routes/operations.js";
+import { getSettings } from "./lib/settings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -32,6 +34,9 @@ app.use("/api/auth/customer", customerAuthRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/customers", customersRouter);
+app.use("/api/settings", settingsRouter);
+app.use("/api/escalations", escalationsRouter);
+app.use("/api/actions", actionsRouter);
 // Twilio webhooks are form-encoded and signature-checked inside the router (routes/twilio.ts).
 app.use("/api/twilio", twilioRouter);
 
@@ -39,6 +44,13 @@ app.use("/api/twilio", twilioRouter);
 if (process.env.DEMO_MODE === "true") {
   app.use("/api/dev", devRouter);
 }
+
+// GET /api/demo/config — the non-sensitive tenant settings the browser demo needs (speech language,
+// whether to record, brand name for the page).
+app.get("/api/demo/config", (_req, res) => {
+  const s = getSettings();
+  res.json({ brandName: s.brandName, assistantName: s.assistantName, language: s.language, recordingEnabled: s.recordingEnabled });
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, demoMode: process.env.DEMO_MODE === "true" });

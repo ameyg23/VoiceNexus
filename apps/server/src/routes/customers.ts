@@ -4,6 +4,7 @@ import { requireEmployeeAuth } from "../lib/auth.js";
 import { OUTCOME_SQL } from "../lib/outcome.js";
 import type { CustomerRow } from "../lib/businessLogic.js";
 import { listConversations } from "./conversations.js";
+import { actionViewsWhere } from "./operations.js";
 
 // Employee-only customer views (ARCHITECTURE.md §10/§15). PIN and portal-password hashes are never
 // selected into a response.
@@ -30,6 +31,7 @@ function toEmployeeView(row: CustomerWithPhone) {
     autopayEnabled: Boolean(row.autopay_enabled),
     discountPercent: row.discount_percent,
     hasPortalAccount: row.portal_password_hash !== null,
+    serviceZip: row.service_zip,
     createdAt: row.created_at,
   };
 }
@@ -68,6 +70,7 @@ customersRouter.get("/:id", (req, res) => {
   res.json({
     customer: toEmployeeView(row),
     conversations,
+    actions: actionViewsWhere(`a.customer_id = @id`, { "@id": row.id }),
     stats: { total: stats.total, resolved: stats.resolved ?? 0, escalated: stats.escalated ?? 0 },
   });
 });

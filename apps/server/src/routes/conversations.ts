@@ -4,6 +4,7 @@ import { db } from "@voice-nexus/db";
 import { requireEmployeeAuth } from "../lib/auth.js";
 import { OUTCOME_SQL, ESCALATION_REASON_SQL, CALL_OUTCOMES, sqliteUtcToIso } from "../lib/outcome.js";
 import { resolveRecording } from "../lib/recordings.js";
+import { actionViewsWhere, escalationForConversation } from "./operations.js";
 
 // Employee-only conversation views for the ops dashboard (ARCHITECTURE.md §10/§15).
 export const conversationsRouter = Router();
@@ -27,6 +28,7 @@ interface ConversationListRow {
   channel: string;
   hasAudio: number;
   turnCount: number;
+  csatScore: number | null;
 }
 
 const LIST_COLUMNS = `
@@ -35,7 +37,8 @@ const LIST_COLUMNS = `
   c.auth_status as authStatus, c.auth_method as authMethod, c.detected_intent as detectedIntent,
   c.status, ${OUTCOME_SQL} as outcome, ${ESCALATION_REASON_SQL} as escalationReason, c.channel,
   (c.audio_path IS NOT NULL) as hasAudio,
-  (SELECT COUNT(*) FROM transcript_turns t WHERE t.conversation_id = c.id) as turnCount`;
+  (SELECT COUNT(*) FROM transcript_turns t WHERE t.conversation_id = c.id) as turnCount,
+  c.csat_score as csatScore`;
 
 export function mapListRow(row: ConversationListRow) {
   return { ...row, hasAudio: Boolean(row.hasAudio) };
@@ -104,10 +107,10 @@ conversationsRouter.get("/:id", (req, res) => {
   const turns = (
     db
       .prepare(
-        `SELECT turn_index as turnIndex, speaker, text, timestamp FROM transcript_turns
+        `SELECT turn_index as turnIndex, speaker, text, timestamp, latency_ms as latencyMs FROM transcript_turns
          WHERE conversation_id = @id ORDER BY turn_index`
       )
-      .all({ "@id": req.params.id }) as { turnIndex: number; speaker: string; text: string; timestamp: string }[]
+      .all({ "@id": req.params.id }) as { turnIndex: number; speaker: string; text: string; timestamp: string; latencyMs: number | null }[]
   ).map((t) => ({ ...t, timestamp: sqliteUtcToIso(t.timestamp) }));
 
   const session = db
@@ -124,7 +127,14 @@ conversationsRouter.get("/:id", (req, res) => {
       .all({ "@id": req.params.id }) as { method: string; destinationMasked: string; status: string; attempts: number; createdAt: string }[]
   ).map((o) => ({ ...o, createdAt: sqliteUtcToIso(o.createdAt) }));
 
-  res.json({ conversation, turns, authSession: session ?? null, otps });
+  res.json({
+    conversation,
+    turns,
+    authSession: session ?? null,
+    otps,
+    actions: actionViewsWhere(`a.conversation_id = @id`, { "@id": req.params.id }).reverse(),
+    escalation: escalationForConversation(req.params.id),
+  });
 });
 
 // GET /api/conversations/:id/audio — streams the recording (webm for demo calls, mp3 for phone).

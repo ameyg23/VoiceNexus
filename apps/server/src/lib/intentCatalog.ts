@@ -1,7 +1,7 @@
-// Human-readable catalog of the fixed Intent enum (packages/shared), for the dashboard's Intents page.
-// Intents are code-defined — classification (aiEngine.ts classifyIntentAI) and fulfillment
-// (businessLogic.ts getIntentResponseData) both switch on this enum — so this is a read-only view,
-// not an editable config.
+// Human-readable catalog of the Intent enum (packages/shared), for the dashboard's Intents page. The
+// set of intents and their fulfillment subflows are code-defined (authStateMachine.ts); operations
+// curates them per tenant — enable/disable an intent and add example utterances for the classifier —
+// via settings.intentOverrides (PRD §5 "configures intents, utterances").
 
 import type { Intent } from "@voice-nexus/shared";
 
@@ -25,9 +25,9 @@ export const INTENT_CATALOG: IntentInfo[] = [
   {
     intent: "MAKE_PAYMENT",
     label: "Make Payment",
-    description: "Simulated payment of the full balance — zeroes balance and past-due, stamps last payment.",
+    description: "Reads back the balance and asks for a yes before charging the card on file (simulated). Zeroes balance and past-due.",
     examples: ["I want to pay my bill", "Pay off my balance", "Can I make a payment?"],
-    dataShared: ["Amount paid"],
+    dataShared: ["Current balance", "Amount paid"],
   },
   {
     intent: "PAYMENT_HISTORY",
@@ -44,11 +44,25 @@ export const INTENT_CATALOG: IntentInfo[] = [
     dataShared: ["Next billing due date", "Current balance"],
   },
   {
+    intent: "PAYMENT_PROMISE",
+    label: "Payment Promise",
+    description: "Sets up a promise to pay the balance by a date up to 14 days out, confirmed before it's logged.",
+    examples: ["Can I pay next Friday?", "I need more time to pay", "I can't pay until the 30th"],
+    dataShared: ["Current balance"],
+  },
+  {
     intent: "PLAN_INFO",
     label: "Plan Info",
     description: "Current plan name and any discount applied.",
     examples: ["What plan am I on?", "What's my internet speed plan?", "Do I have a discount?"],
     dataShared: ["Plan name", "Discount percent"],
+  },
+  {
+    intent: "PLAN_CHANGE",
+    label: "Plan Change",
+    description: "Lists the other plans with prices, then switches plan after the caller confirms (effective next bill).",
+    examples: ["I want to upgrade my internet", "Switch me to the 1 gig plan", "What other plans do you have?"],
+    dataShared: ["Current plan", "Plan prices"],
   },
   {
     intent: "AUTOPAY_STATUS",
@@ -58,16 +72,44 @@ export const INTENT_CATALOG: IntentInfo[] = [
     dataShared: ["Autopay on/off"],
   },
   {
+    intent: "OUTAGE_CHECK",
+    label: "Outage Check",
+    description: "Checks for a known outage at the account's service ZIP and gives the restore estimate.",
+    examples: ["Is there an outage?", "Is the internet down in my area?", "Is your service down?"],
+    dataShared: ["Outage status for the service area"],
+  },
+  {
     intent: "TECH_TRIAGE",
     label: "Tech Triage",
-    description: "Scripted basic troubleshooting (power-cycle modem/router, check cables), then offer a technician.",
+    description: "Checks for an outage first, then scripted basic troubleshooting (power-cycle modem/router, check cables), then offers a technician visit.",
     examples: ["My internet is down", "The Wi-Fi keeps dropping", "My connection is really slow"],
+    dataShared: [],
+  },
+  {
+    intent: "SCHEDULE_TECH",
+    label: "Technician Visit",
+    description: "Books a technician for a day in the next week, morning or afternoon window, after confirmation (dispatch request).",
+    examples: ["I need a technician", "Can someone come out?", "Book me an appointment"],
+    dataShared: [],
+  },
+  {
+    intent: "SCHEDULE_CALLBACK",
+    label: "Callback",
+    description: "Books a callback to the caller's number for a day and time window. Works before verification too.",
+    examples: ["Can someone call me back?", "Call me back tomorrow", "I'd like a callback"],
+    dataShared: [],
+  },
+  {
+    intent: "AGENT_REQUEST",
+    label: "Agent Request",
+    description: "Transfers to a live agent with a structured handoff (identity status, intent, what was tried). Works at any point in the call.",
+    examples: ["Let me talk to a person", "Representative", "I want a human"],
     dataShared: [],
   },
   {
     intent: "UNKNOWN",
     label: "Unknown",
-    description: "Couldn't classify the request — the AI asks the caller to clarify rather than guessing.",
+    description: "Couldn't classify the request. The assistant says so and offers the menu. After repeated misses it offers a live agent or a callback instead of guessing.",
     examples: ["Hi, um, I have a question", "Can you help me?"],
     dataShared: [],
   },

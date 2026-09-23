@@ -6,6 +6,7 @@ import { OUTCOME_SQL, ESCALATION_REASON_SQL } from "../lib/outcome.js";
 import { GEMINI_MODEL } from "../lib/aiEngine.js";
 import { INTENT_CATALOG } from "../lib/intentCatalog.js";
 import { listConversations } from "./conversations.js";
+import { getSettings, isIntentEnabled } from "../lib/settings.js";
 
 // Employee-only aggregate views for the ops dashboard (ARCHITECTURE.md §10/§15). Every count goes
 // through OUTCOME_SQL so the overview, Reports and Calls list agree.
@@ -14,18 +15,64 @@ dashboardRouter.use(requireEmployeeAuth);
 
 const count = (outcome: string) => `SUM(CASE WHEN ${OUTCOME_SQL} = '${outcome}' THEN 1 ELSE 0 END)`;
 
-// GET /api/dashboard/summary — overview tiles, distributions, and recent calls.
-dashboardRouter.get("/summary", (_req, res) => {
-  const totals = db
+// Operator KPIs (PRD VN-6 + §10 business-impact categories). Rates are over finished calls (live ones
+// excluded). Cost per call uses the operator's own rates from Settings: automated minutes for every
+// call, plus the configured agent minutes for each call that needed a human (escalation or callback).
+export function computeKpis() {
+  const t = db
     .prepare(
       `SELECT COUNT(*) as totalCalls,
-         ${count("RESOLVED")} as resolved, ${count("ESCALATED")} as escalated,
+         ${count("RESOLVED")} as resolved, ${count("ESCALATED")} as escalated, ${count("CALLBACK")} as callback,
          ${count("ABANDONED")} as abandoned, ${count("IN_PROGRESS")} as inProgress,
-         AVG(c.duration_seconds) as avgHandleSeconds
+         AVG(c.duration_seconds) as avgHandleSeconds,
+         SUM(COALESCE(c.duration_seconds, 0)) as totalSeconds,
+         AVG(c.csat_score) as csatAverage, COUNT(c.csat_score) as csatResponses
        FROM conversations c`
     )
     .get() as Record<string, number | null>;
+  const n = (k: string) => Number(t[k] ?? 0);
+  const finished = n("totalCalls") - n("inProgress");
+  const rate = (x: number) => (finished > 0 ? x / finished : null);
 
+  const handoffs = db
+    .prepare(
+      `SELECT COUNT(*) as total,
+         SUM(CASE WHEN verified = 1 AND intent IS NOT NULL AND intent NOT IN ('UNKNOWN', 'AGENT_REQUEST') THEN 1 ELSE 0 END) as fullContext,
+         SUM(CASE WHEN status = 'WAITING' THEN 1 ELSE 0 END) as waiting
+       FROM escalations`
+    )
+    .get() as { total: number; fullContext: number | null; waiting: number | null };
+
+  const s = getSettings();
+  const humanCalls = n("escalated") + n("callback");
+  const cost = finished > 0 ? ((n("totalSeconds") / 60) * s.costPerMinuteAutomated + humanCalls * s.agentMinutesPerEscalation * s.costPerMinuteAgent) / finished : null;
+
+  const latencies = (db.prepare(`SELECT latency_ms as ms FROM transcript_turns WHERE latency_ms IS NOT NULL ORDER BY latency_ms`).all() as { ms: number }[]).map((r) => r.ms);
+  const pct = (p: number) => (latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(p * latencies.length))] : null);
+
+  return {
+    totalCalls: n("totalCalls"),
+    finishedCalls: finished,
+    resolved: n("resolved"),
+    escalated: n("escalated"),
+    callback: n("callback"),
+    abandoned: n("abandoned"),
+    inProgress: n("inProgress"),
+    containmentRate: rate(n("resolved")),
+    transferRate: rate(n("escalated")),
+    callbackRate: rate(n("callback")),
+    abandonmentRate: rate(n("abandoned")),
+    avgHandleSeconds: t.avgHandleSeconds === null ? null : Math.round(Number(t.avgHandleSeconds)),
+    csatAverage: t.csatAverage === null ? null : Math.round(Number(t.csatAverage) * 10) / 10,
+    csatResponses: n("csatResponses"),
+    costPerCall: cost === null ? null : Math.round(cost * 100) / 100,
+    handoffs: { total: handoffs.total, withFullContext: handoffs.fullContext ?? 0, waiting: handoffs.waiting ?? 0 },
+    latency: { turns: latencies.length, medianMs: pct(0.5), p90Ms: pct(0.9) },
+  };
+}
+
+// GET /api/dashboard/summary — overview tiles, distributions, and recent calls.
+dashboardRouter.get("/summary", (_req, res) => {
   const authMethods = db
     .prepare(`SELECT auth_method as method, COUNT(*) as count FROM conversations WHERE auth_status = 'SUCCESS' GROUP BY auth_method`)
     .all() as { method: string; count: number }[];
@@ -37,17 +84,11 @@ dashboardRouter.get("/summary", (_req, res) => {
     )
     .all() as { intent: string; count: number }[];
 
-  res.json({
-    totalCalls: totals.totalCalls ?? 0,
-    resolved: totals.resolved ?? 0,
-    escalated: totals.escalated ?? 0,
-    abandoned: totals.abandoned ?? 0,
-    inProgress: totals.inProgress ?? 0,
-    avgHandleSeconds: totals.avgHandleSeconds === null ? null : Math.round(totals.avgHandleSeconds),
-    authMethods,
-    intents,
-    recentCalls: listConversations("", {}, 6),
-  });
+  const actions = db
+    .prepare(`SELECT type, COUNT(*) as count FROM call_actions WHERE status <> 'CANCELLED' GROUP BY type`)
+    .all() as { type: string; count: number }[];
+
+  res.json({ ...computeKpis(), authMethods, intents, actions, recentCalls: listConversations("", {}, 6) });
 });
 
 const reportsQuery = z.object({
@@ -90,7 +131,7 @@ dashboardRouter.get("/reports", (req, res) => {
   const intentPerformance = db
     .prepare(
       `SELECT COALESCE(c.detected_intent, 'UNKNOWN') as intent, COUNT(*) as total,
-         ${count("RESOLVED")} as resolved, ${count("ESCALATED")} as escalated, ${count("ABANDONED")} as abandoned
+         ${count("RESOLVED")} as resolved, ${count("ESCALATED")} as escalated, ${count("CALLBACK")} as callback, ${count("ABANDONED")} as abandoned
        FROM conversations c GROUP BY intent ORDER BY total DESC`
     )
     .all();
@@ -135,7 +176,17 @@ dashboardRouter.get("/reports", (req, res) => {
 
   const channels = db.prepare(`SELECT channel, COUNT(*) as count FROM conversations GROUP BY channel`).all();
 
+  const csatRows = db.prepare(`SELECT csat_score as score, COUNT(*) as count FROM conversations WHERE csat_score IS NOT NULL GROUP BY csat_score`).all() as { score: number; count: number }[];
+  const csatDistribution = [1, 2, 3, 4, 5].map((score) => ({ score, count: csatRows.find((r) => r.score === score)?.count ?? 0 }));
+
+  const actionsByType = db
+    .prepare(`SELECT type, status, COUNT(*) as count FROM call_actions GROUP BY type, status ORDER BY type`)
+    .all() as { type: string; status: string; count: number }[];
+
   res.json({
+    kpis: computeKpis(),
+    csatDistribution,
+    actionsByType,
     callsByDay,
     callsByHour,
     intentPerformance,
@@ -152,6 +203,7 @@ dashboardRouter.get("/reports", (req, res) => {
 
 // GET /api/dashboard/intents — the fixed intent catalog with live call counts.
 dashboardRouter.get("/intents", (_req, res) => {
+  const settings = getSettings();
   const counts = db
     .prepare(
       `SELECT c.detected_intent as intent, COUNT(*) as total, ${count("RESOLVED")} as resolved, ${count("ESCALATED")} as escalated
@@ -162,7 +214,15 @@ dashboardRouter.get("/intents", (_req, res) => {
   res.json({
     intents: INTENT_CATALOG.map((info) => {
       const c = counts.find((r) => r.intent === info.intent);
-      return { ...info, total: c?.total ?? 0, resolved: c?.resolved ?? 0, escalated: c?.escalated ?? 0 };
+      const override = settings.intentOverrides[info.intent];
+      return {
+        ...info,
+        enabled: isIntentEnabled(info.intent, settings),
+        customExamples: override?.examples ?? [],
+        total: c?.total ?? 0,
+        resolved: c?.resolved ?? 0,
+        escalated: c?.escalated ?? 0,
+      };
     }),
   });
 });

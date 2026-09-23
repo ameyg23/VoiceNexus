@@ -5,12 +5,20 @@
 import { db } from "@voice-nexus/db";
 import type { Channel } from "@voice-nexus/shared";
 import { nextConversationId } from "./ids.js";
+import { buildGreeting, getSettings, LANGUAGE_NAMES } from "./settings.js";
+import { translateAI } from "./aiEngine.js";
 
-export const GREETING = "Thanks for calling the care line. What can I help you with today?";
+// The operator's configured greeting (VN-9) with its AI/recording disclosures, in the tenant language.
+export async function greetingText(): Promise<string> {
+  const settings = getSettings();
+  const greeting = buildGreeting(settings);
+  if (settings.language === "en-US") return greeting;
+  return (await translateAI(greeting, LANGUAGE_NAMES[settings.language])) ?? greeting;
+}
 
 // ANI is display-only and never grants auth (ARCHITECTURE.md §18) — the auth session always
 // starts at AWAITING_INTENT, exactly as for an unknown caller.
-export function startConversation(ani: string, channel: Channel, twilioCallSid?: string): string {
+export function startConversation(ani: string, channel: Channel, greeting: string, twilioCallSid?: string): string {
   const conversationId = nextConversationId();
   const now = new Date().toISOString();
 
@@ -24,18 +32,19 @@ export function startConversation(ani: string, channel: Channel, twilioCallSid?:
     VALUES (@cid, 'AWAITING_INTENT', NULL, 0)
   `).run({ "@cid": conversationId });
 
-  appendTurn(conversationId, "AI", GREETING);
+  appendTurn(conversationId, "AI", greeting);
   return conversationId;
 }
 
-export function appendTurn(conversationId: string, speaker: "AI" | "CUSTOMER", text: string) {
+// latencyMs: server time to produce an AI reply (NFR "latency to first response"); null for caller turns.
+export function appendTurn(conversationId: string, speaker: "AI" | "CUSTOMER", text: string, latencyMs?: number) {
   const row = db
     .prepare(`SELECT COALESCE(MAX(turn_index), -1) + 1 as nextIndex FROM transcript_turns WHERE conversation_id = @cid`)
     .get({ "@cid": conversationId }) as { nextIndex: number };
 
   db.prepare(`
-    INSERT INTO transcript_turns (conversation_id, turn_index, speaker, text) VALUES (@cid, @idx, @speaker, @text)
-  `).run({ "@cid": conversationId, "@idx": row.nextIndex, "@speaker": speaker, "@text": text });
+    INSERT INTO transcript_turns (conversation_id, turn_index, speaker, text, latency_ms) VALUES (@cid, @idx, @speaker, @text, @latency)
+  `).run({ "@cid": conversationId, "@idx": row.nextIndex, "@speaker": speaker, "@text": text, "@latency": latencyMs ?? null });
 }
 
 // Idempotent: Twilio can deliver the "completed" status callback after we've already hung up
@@ -57,6 +66,11 @@ export function endConversation(conversationId: string): { durationSeconds: numb
   return { durationSeconds };
 }
 
+export function conversationStatus(conversationId: string): string | null {
+  const row = db.prepare(`SELECT status FROM conversations WHERE id = @id`).get({ "@id": conversationId }) as { status: string } | undefined;
+  return row?.status ?? null;
+}
+
 export function conversationExists(conversationId: string): boolean {
-  return Boolean(db.prepare(`SELECT 1 FROM conversations WHERE id = @id`).get({ "@id": conversationId }));
+  return conversationStatus(conversationId) !== null;
 }
