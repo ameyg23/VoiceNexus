@@ -95,17 +95,7 @@ function SignupForm() {
   }
 
   return (
-    <AuthLayout
-      title={selectedPlan ? `Get ${selectedPlan.name}` : "Create your account"}
-      subtitle={
-        <>
-          Already have one?{" "}
-          <Link href="/login" className="font-medium text-brand-600 hover:text-brand-700">
-            Sign in
-          </Link>
-        </>
-      }
-    >
+    <AuthLayout title={selectedPlan ? `Get ${selectedPlan.name}` : "Create your account"}>
       <div className="mb-5 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
         <p className="text-sm font-semibold text-brand-800">
           {selectedPlan ? `${selectedPlan.name} - ${formatMoney(selectedPlan.monthlyPrice)}/mo` : planName}
