@@ -9,10 +9,10 @@ import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon, WaveformIcon, CheckIcon, 
 import { formatMoney } from "../../../lib/format";
 
 const FEATURES = [
-  { icon: WaveformIcon, title: "Speeds up to 1 Gig", body: "Fiber-fast downloads and uploads for every device in the house, no slowdowns at peak hours." },
+  { icon: WaveformIcon, title: "Speeds up to 1 Gig", body: "Fiber-fast downloads and uploads for every device, at home or in the office, no slowdowns at peak hours." },
   { icon: HeadsetIcon, title: "24/7 automated support", body: "Call any time, day or night, and get help in seconds - a live agent is always one ask away." },
   { icon: CheckIcon, title: "No contracts, no surprises", body: "Simple monthly pricing, cancel any time. No hidden fees, no early-termination charges." },
-  { icon: UsersIcon, title: "Local technicians", body: "Need a hand at home? We'll get someone out to you, usually within the week." },
+  { icon: UsersIcon, title: "Local technicians", body: "Need a hand at home or on-site at your business? We'll get someone out to you, usually within the week." },
 ];
 
 // Illustrative trust-signal numbers for the demo (Springfield Fiber is a fictional company - not
@@ -144,11 +144,11 @@ export default function GetStartedPage() {
               <div className="text-center lg:text-left">
                 <span className="kicker text-brand-500">Welcome, {customer.name.split(" ")[0]}</span>
                 <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">
-                  Fiber internet built for <span className="text-brand-500">your home.</span>
+                  Fiber internet built for <span className="text-brand-500">your home or business.</span>
                 </h1>
                 <p className="mx-auto mt-4 max-w-xl text-gray-400 lg:mx-0">
-                  Springfield Fiber keeps you connected with fast, reliable internet and support that actually picks up. Take a look at what we offer,
-                  then choose a plan whenever you're ready.
+                  Springfield Fiber keeps homes and businesses connected with fast, reliable internet and support that actually picks up. Take a look at
+                  what we offer, then choose a plan whenever you're ready.
                 </p>
                 <a href="#plans" className="btn btn-primary mt-7 inline-flex px-6 py-2.5 text-sm">
                   View plans
@@ -206,10 +206,10 @@ export default function GetStartedPage() {
                   className="h-56 w-full object-cover sm:h-full"
                 />
                 <div className="p-6 sm:p-8">
-                  <span className="kicker">Wifi that reaches every room</span>
-                  <h2 className="mt-2 text-lg font-bold text-gray-900">Work, stream, and connect from anywhere in the house</h2>
+                  <span className="kicker">Wifi built to keep up</span>
+                  <h2 className="mt-2 text-lg font-bold text-gray-900">Work, stream, and connect without the dead zones</h2>
                   <p className="mt-2 text-sm text-gray-600">
-                    Whole-home wifi coverage means no dead zones, whether you're on a video call in the office or streaming on the couch.
+                    Reliable coverage from wall to wall, whether it's a home office, a full house, or a small business floor.
                   </p>
                   <ul className="mt-4 space-y-2 text-sm text-gray-600">
                     <li className="flex items-start gap-2">
