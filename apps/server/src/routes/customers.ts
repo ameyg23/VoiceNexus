@@ -37,14 +37,15 @@ function toEmployeeView(row: CustomerWithPhone) {
   };
 }
 
-// GET /api/customers — every customer with call counts.
+// GET /api/customers — every customer with call counts. Excludes PROSPECT rows (a web signup that
+// hasn't bought a plan yet isn't a customer of the business yet, so it doesn't belong in ops views).
 customersRouter.get("/", (_req, res) => {
   const rows = db
     .prepare(
       `SELECT cu.*,
          (SELECT COUNT(*) FROM conversations c WHERE c.customer_id = cu.id) as callCount,
          (SELECT MAX(c.start_time) FROM conversations c WHERE c.customer_id = cu.id) as lastCallAt
-       FROM customers cu ORDER BY cu.id`
+       FROM customers cu WHERE cu.account_status != 'PROSPECT' ORDER BY cu.id`
     )
     .all() as unknown as (CustomerWithPhone & { callCount: number; lastCallAt: string | null })[];
 

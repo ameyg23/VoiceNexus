@@ -20,7 +20,7 @@ import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../.
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What do I need on hand when I call?",
-    a: "Your account number (BAN) and your 4-digit phone PIN, the same PIN you set up when you created your account. Our assistant verifies you with these before sharing any account details.",
+    a: "Your account number (BAN) and your 4-digit phone PIN, the ones you were given when you signed up for service. Our assistant verifies you with these before sharing any account details.",
   },
   {
     q: "What can the automated assistant help with?",
@@ -50,6 +50,10 @@ export default function PortalAccountPage() {
   useEffect(() => {
     customerMe()
       .then(({ customer }) => {
+        if (customer.accountStatus === "PROSPECT") {
+          router.replace("/portal/get-started");
+          return;
+        }
         setCustomer(customer);
         return Promise.all([customerActivity().then(setActivity), fetchCustomerPlans().then(({ plans }) => setPlans(plans))]);
       })

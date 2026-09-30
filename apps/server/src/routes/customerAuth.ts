@@ -1,10 +1,11 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
-import { PLAN_CATALOG, type CustomerRow } from "../lib/businessLogic.js";
+import { PLAN_CATALOG, findPlan, type CustomerRow } from "../lib/businessLogic.js";
 import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
@@ -33,19 +34,24 @@ const signupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8, "password must be at least 8 characters"),
-  pin: z.string().regex(/^\d{4}$/, "PIN must be exactly 4 digits"),
 });
 
-// POST /api/auth/customer/signup — creates a brand-new customer account (its own BAN + PIN,
-// separate from the demo-seeded customers). `password` is the web portal login; `pin` is the
-// SAME 4-digit PIN used to authenticate over a phone call (authStateMachine.ts) — signup sets up
-// both at once so the new account is immediately usable on both surfaces. An email already on any
-// customer (or employee) is refused — emails are unique (migration 004), so sign-in is unambiguous.
+// POST /api/auth/customer/signup — creates a bare web-login account only: no BAN, no plan, no phone
+// PIN yet (user decision, Sep 30 — "a new customer... should be simply able to create the account
+// with the help of email and password... once they click in, they can buy the services"). Marked
+// `account_status = 'PROSPECT'` until they buy a plan via POST /purchase-plan below, which is the
+// step that actually makes them a customer (assigns a real BAN + a phone PIN they're shown once).
+// `ban`/`plan_name` get real-but-inert placeholders here — `ban` in particular is a sentinel
+// (`PENDING-<id>`) that can never collide with a real spoken/typed 6-digit BAN, so a prospect is
+// never phone-reachable via findCustomerByBan until they actually purchase. No schema change needed:
+// nextBan()'s counter query CASTs the sentinel's tail to an integer, which SQLite reads as 0, so it
+// can't corrupt the BAN sequence for real customers either.
+// An email already on any customer (or employee) is refused — emails are unique (migration 004).
 customerAuthRouter.post("/signup", (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { name, email, password, pin } = parsed.data;
+  const { name, email, password } = parsed.data;
 
   const existing = db
     .prepare(`SELECT id FROM customers WHERE lower(email) = lower(@email)`)
@@ -54,9 +60,9 @@ customerAuthRouter.post("/signup", (req, res) => {
   if (existing || isEmployee) return res.status(409).json({ error: "an account with that email already exists" });
 
   const id = nextCustomerId();
-  const ban = nextBan();
   const phoneNumber = `+1555${id.replace(/\D/g, "").padStart(6, "0")}`;
-  const pinHash = bcrypt.hashSync(pin, 10);
+  const pendingBan = `PENDING-${id}`;
+  const throwawayPinHash = bcrypt.hashSync(crypto.randomUUID(), 10); // unreachable: sentinel BAN can never be looked up
   const portalPasswordHash = hashPassword(password);
 
   db.prepare(`
@@ -68,15 +74,15 @@ customerAuthRouter.post("/signup", (req, res) => {
     ) VALUES (
       @id, @name, @phone, @ban, @pinHash, @email, 0, 'NONE',
       0, 0, NULL, NULL,
-      0, 0, 0, 'Starter', 'ACTIVE',
-      @portalHash, '62701'
+      0, 0, 0, '', 'PROSPECT',
+      @portalHash, NULL
     )
   `).run({
     "@id": id,
     "@name": name,
     "@phone": phoneNumber,
-    "@ban": ban,
-    "@pinHash": pinHash,
+    "@ban": pendingBan,
+    "@pinHash": throwawayPinHash,
     "@email": email,
     "@portalHash": portalPasswordHash,
   });
@@ -84,6 +90,41 @@ customerAuthRouter.post("/signup", (req, res) => {
   const row = db.prepare(`SELECT * FROM customers WHERE id = @id`).get({ "@id": id }) as CustomerRow | undefined;
   setCustomerSession(res, id);
   res.status(201).json({ customer: toPublic(row!) });
+});
+
+const purchasePlanSchema = z.object({ planName: z.string().min(1) });
+
+// POST /api/auth/customer/purchase-plan — the step that actually turns a web-only signup into a real
+// customer: simulated (no real payment gateway, matching how MAKE_PAYMENT is simulated on calls).
+// Assigns a real BAN and a freshly-generated 4-digit phone PIN, returned in plaintext exactly once so
+// the customer can note it down — every other endpoint only ever works with the bcrypt hash. Existing
+// active customers can't call this to self-service a plan change; that stays phone/agent-only by
+// design (portal already only offers "Call to switch" for its Available Plans section).
+customerAuthRouter.post("/purchase-plan", requireCustomerAuth, (req, res) => {
+  const parsed = purchasePlanSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const customerId = req.customer!.customerId;
+  const row = db.prepare(`SELECT * FROM customers WHERE id = @id`).get({ "@id": customerId }) as CustomerRow | undefined;
+  if (!row) return res.status(401).json({ error: "not authenticated" });
+  if (row.account_status !== "PROSPECT") {
+    return res.status(400).json({ error: "this account already has an active plan — call customer care to change it" });
+  }
+
+  const plan = findPlan(parsed.data.planName);
+  if (!plan) return res.status(400).json({ error: "unknown plan" });
+
+  const ban = nextBan();
+  const pin = crypto.randomInt(1000, 10000).toString();
+  const pinHash = bcrypt.hashSync(pin, 10);
+
+  db.prepare(`
+    UPDATE customers
+    SET ban = @ban, pin_hash = @pinHash, plan_name = @planName, account_status = 'ACTIVE'
+    WHERE id = @id
+  `).run({ "@ban": ban, "@pinHash": pinHash, "@planName": plan.name, "@id": customerId });
+
+  res.status(201).json({ ban, pin, planName: plan.name });
 });
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });

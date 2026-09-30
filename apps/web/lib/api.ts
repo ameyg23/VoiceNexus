@@ -459,8 +459,14 @@ export interface CustomerAccount {
   discountPercent: number;
 }
 
-export function customerSignup(name: string, email: string, password: string, pin: string) {
-  return authFetch<{ customer: CustomerAccount }>("/api/auth/customer/signup", { name, email, password, pin });
+export function customerSignup(name: string, email: string, password: string) {
+  return authFetch<{ customer: CustomerAccount }>("/api/auth/customer/signup", { name, email, password });
+}
+
+// The step that actually makes a signed-up-but-not-yet-a-customer account into a real one: assigns a
+// BAN and a phone PIN, returned in plaintext exactly once so it can be shown to the customer.
+export function purchasePlan(planName: string) {
+  return authFetch<{ ban: string; pin: string; planName: string }>("/api/auth/customer/purchase-plan", { planName });
 }
 
 export function customerLogin(email: string, password: string) {

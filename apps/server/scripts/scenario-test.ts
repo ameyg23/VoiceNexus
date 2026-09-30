@@ -491,6 +491,78 @@ async function scenarios() {
     expectText(second, /verified.*balance is/i, "authenticates and answers for the second account");
     check("conversation now attributed to the second customer", one(`SELECT customer_id FROM conversations WHERE id = ?`, call.id)?.customer_id === "CUS002");
   }
+
+  console.log("\n20. Web signup doesn't make you a customer until you buy a plan (Sep 30)");
+  {
+    const email = `prospect-${Date.now()}@example.com`;
+    const signupRes = await fetch(`${BASE}/api/auth/customer/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Test Prospect", email, password: "prospect-test-pass" }),
+    });
+    const signupJson = await signupRes.json();
+    check("signup succeeds without a PIN", signupRes.status === 201, JSON.stringify(signupJson));
+    check(
+      "starts as PROSPECT with a non-phone-reachable sentinel BAN",
+      signupJson.customer.accountStatus === "PROSPECT" && signupJson.customer.ban.startsWith("PENDING-"),
+      JSON.stringify(signupJson)
+    );
+
+    const cookie = (signupRes.headers.getSetCookie().find((c) => c.startsWith("vn_customer_session=")) ?? "").split(";")[0];
+    const api = async (p: string, init: RequestInit = {}) => {
+      const res = await fetch(`${BASE}${p}`, { ...init, headers: { "Content-Type": "application/json", cookie, ...(init.headers ?? {}) } });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+
+    const session = await api("/api/auth/session");
+    check("session redirect points at get-started, not the account page", session.json.redirectTo === "/portal/get-started", JSON.stringify(session.json));
+
+    const purchase = await api("/api/auth/customer/purchase-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 300" }) });
+    check(
+      "purchase assigns a real BAN + a 4-digit PIN",
+      purchase.status === 201 && /^BAN\d+$/.test(purchase.json.ban) && /^\d{4}$/.test(purchase.json.pin),
+      JSON.stringify(purchase.json)
+    );
+
+    const sessionAfter = await api("/api/auth/session");
+    check("session now redirects to the normal account page", sessionAfter.json.redirectTo === "/portal/account", JSON.stringify(sessionAfter.json));
+
+    const doublePurchase = await api("/api/auth/customer/purchase-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 1000" }) });
+    check("can't buy a second plan once active", doublePurchase.status === 400, JSON.stringify(doublePurchase.json));
+
+    const call = await Call.start();
+    await call.say("what's my balance");
+    const t = await verifyPin(call, purchase.json.ban.replace("BAN", ""), purchase.json.pin);
+    expectText(t, /verified.*balance is \$0\.00/i, "the newly-assigned BAN+PIN verifies on a real call");
+
+    const login = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "priya.sharma@voicenexus.demo", password: "admin-demo-pass" }),
+    });
+    const adminCookie = (login.headers.getSetCookie().find((c) => c.startsWith("vn_employee_session=")) ?? "").split(";")[0];
+    const custList = await fetch(`${BASE}/api/customers`, { headers: { cookie: adminCookie } }).then((r) => r.json());
+    check("the purchased customer appears in the ops list", custList.customers.some((c: { email: string }) => c.email === email), JSON.stringify(custList.customers.length));
+
+    const email2 = `prospect2-${Date.now()}@example.com`;
+    await fetch(`${BASE}/api/auth/customer/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Never Buys", email: email2, password: "prospect-test-pass" }),
+    });
+    const custList2 = await fetch(`${BASE}/api/customers`, { headers: { cookie: adminCookie } }).then((r) => r.json());
+    check(
+      "a prospect who never bought a plan is excluded from the ops list",
+      !custList2.customers.some((c: { email: string }) => c.email === email2),
+      JSON.stringify(custList2.customers.length)
+    );
+
+    // Delete this scenario's own conversation first (FK: conversations.customer_id → customers.id) —
+    // the shared restore() below only clears conversations, not customer rows this scenario created.
+    for (const t of ["transcript_turns", "auth_sessions", "otps", "call_actions", "escalations"]) db.prepare(`DELETE FROM ${t} WHERE conversation_id = ?`).run(call.id);
+    db.prepare(`DELETE FROM conversations WHERE id = ?`).run(call.id);
+    db.prepare(`DELETE FROM customers WHERE email = @e1 OR email = @e2`).run({ "@e1": email, "@e2": email2 });
+  }
 }
 
 try {

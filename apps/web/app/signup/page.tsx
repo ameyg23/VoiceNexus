@@ -6,28 +6,27 @@ import { useRouter } from "next/navigation";
 import { customerSignup } from "../../lib/api";
 import { AuthLayout, Field, PasswordInput, SubmitButton, inputClass } from "../../components/AuthLayout";
 
-// Public signup creates a customer account (employee accounts are created by an existing admin).
-// The 4-digit PIN is the same one that verifies the caller on the phone line.
+// Public signup only creates a web login (employee accounts are created by an existing admin) - no
+// BAN or phone PIN yet. Those get assigned when the customer actually buys a plan on the page they
+// land on right after this (/portal/get-started), which is what makes them a real customer.
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) return setError("Passwords don't match.");
-    if (!/^\d{4}$/.test(pin)) return setError("Your PIN must be exactly 4 digits.");
 
     setLoading(true);
     setError(null);
     try {
-      await customerSignup(name.trim(), email.trim(), password, pin);
-      router.push("/portal/account");
+      await customerSignup(name.trim(), email.trim(), password);
+      router.push("/portal/get-started");
     } catch (err) {
       const msg = String(err);
       if (msg.includes("409")) setError("An account with that email already exists. Try signing in instead.");
@@ -70,19 +69,6 @@ export default function SignupPage() {
         </Field>
         <Field label="Confirm password" htmlFor="confirm">
           <PasswordInput id="confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" minLength={8} />
-        </Field>
-        <Field label="Phone PIN" htmlFor="pin" hint="4 digits. You'll use it to verify yourself when you call us.">
-          <input
-            id="pin"
-            required
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={4}
-            placeholder="••••"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-            className={`${inputClass} tracking-[0.4em]`}
-          />
         </Field>
         {error && (
           <p role="alert" className="rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">

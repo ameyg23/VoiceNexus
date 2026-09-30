@@ -41,12 +41,13 @@ authRouter.post("/login", (req, res) => {
   }
 
   const customer = db
-    .prepare(`SELECT id, portal_password_hash FROM customers WHERE lower(email) = @email AND portal_password_hash IS NOT NULL`)
-    .get({ "@email": email }) as { id: string; portal_password_hash: string } | undefined;
+    .prepare(`SELECT id, portal_password_hash, account_status FROM customers WHERE lower(email) = @email AND portal_password_hash IS NOT NULL`)
+    .get({ "@email": email }) as { id: string; portal_password_hash: string; account_status: string } | undefined;
   if (customer && verifyPassword(password, customer.portal_password_hash)) {
     clearEmployeeSession(res);
     setCustomerSession(res, customer.id);
-    return res.json({ accountType: "customer", redirectTo: "/portal/account" });
+    const redirectTo = customer.account_status === "PROSPECT" ? "/portal/get-started" : "/portal/account";
+    return res.json({ accountType: "customer", redirectTo });
   }
 
   res.status(401).json({ error: "invalid email or password" });
@@ -63,7 +64,12 @@ authRouter.post("/logout", (_req, res) => {
 // /signup can send them straight to their home page. 401 when signed out.
 authRouter.get("/session", (req, res) => {
   if (isValid(req.cookies?.[EMPLOYEE_COOKIE], "employee")) return res.json({ accountType: "employee", redirectTo: "/admin/dashboard" });
-  if (isValid(req.cookies?.[CUSTOMER_COOKIE], "customer")) return res.json({ accountType: "customer", redirectTo: "/portal/account" });
+  const customerId = validCustomerId(req.cookies?.[CUSTOMER_COOKIE]);
+  if (customerId) {
+    const row = db.prepare(`SELECT account_status FROM customers WHERE id = @id`).get({ "@id": customerId }) as { account_status: string } | undefined;
+    const redirectTo = row?.account_status === "PROSPECT" ? "/portal/get-started" : "/portal/account";
+    return res.json({ accountType: "customer", redirectTo });
+  }
   res.status(401).json({ error: "not signed in" });
 });
 
@@ -73,5 +79,15 @@ function isValid(token: string | undefined, audience: "employee" | "customer"): 
     return (jwt.verify(token, jwtSecret()) as { aud?: string }).aud === audience;
   } catch {
     return false;
+  }
+}
+
+function validCustomerId(token: string | undefined): string | null {
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, jwtSecret()) as { aud?: string; customerId?: string };
+    return payload.aud === "customer" && payload.customerId ? payload.customerId : null;
+  } catch {
+    return null;
   }
 }

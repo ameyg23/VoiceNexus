@@ -40,13 +40,13 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
         </Link>
 
         <div className="relative max-w-md">
-          <span className="kicker text-brand-500">Account access</span>
+          <span className="kicker text-brand-500">Springfield Fiber</span>
           <h2 className="mt-3 text-3xl font-bold leading-tight">
-            Your account, <span className="text-brand-500">one sign-in away.</span>
+            Fiber internet that <span className="text-brand-500">just works.</span>
           </h2>
-          <p className="mt-3 text-gray-400">Check your balance, see your next bill, and manage your plan, or call us any time and our AI assistant will help.</p>
+          <p className="mt-3 text-gray-400">Fast, reliable internet and award-winning support for homes and businesses across the region.</p>
           <ul className="mt-8 space-y-3 text-sm text-gray-300">
-            {["Balance, due dates and payment history", "Plan and autopay details", "The same PIN verifies you when you call"].map((line) => (
+            {["Speeds up to 1 Gig", "24/7 automated support, day or night", "No contracts, no hidden fees"].map((line) => (
               <li key={line} className="flex items-center gap-2.5">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-600/20 text-brand-500">
                   <CheckIcon className="h-3.5 w-3.5" />
