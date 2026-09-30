@@ -3,7 +3,7 @@
 // handles the rest (number words, filler, "B as in boy"). The server still independently validates
 // whatever is extracted against the DB either way — the extraction strategy never changes that.
 
-import type { Intent } from "@voice-nexus/shared";
+import type { CustomerType, Intent } from "@voice-nexus/shared";
 import { extractBanAI, extractPinAI, extractOtpAI, classifyIntentAI, classifyYesNoAI, extractDateAI, extractPlanAI } from "./aiEngine.js";
 import { parseSpokenDate, toIsoDate, todayLocal } from "./dates.js";
 import { PLAN_CATALOG, findPlan, matchPlanFromText, type PlanInfo } from "./businessLogic.js";
@@ -151,10 +151,11 @@ export async function extractDate(text: string): Promise<string | null> {
   return parseSpokenDate(text) ?? (await extractDateAI(text, toIsoDate(todayLocal())));
 }
 
-export async function extractPlan(text: string): Promise<PlanInfo | null> {
-  const direct = matchPlanFromText(text);
+export async function extractPlan(text: string, audience: CustomerType = "RESIDENTIAL"): Promise<PlanInfo | null> {
+  const direct = matchPlanFromText(text, audience);
   if (direct) return direct;
-  const name = await extractPlanAI(text, PLAN_CATALOG.map((p) => p.name));
+  const candidates = PLAN_CATALOG.filter((p) => p.audience === audience);
+  const name = await extractPlanAI(text, candidates.map((p) => p.name));
   return name ? (findPlan(name) ?? null) : null;
 }
 

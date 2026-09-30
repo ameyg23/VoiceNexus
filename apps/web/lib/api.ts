@@ -449,6 +449,7 @@ export interface CustomerAccount {
   email: string;
   ban: string;
   planName: string;
+  customerType: "RESIDENTIAL" | "BUSINESS";
   accountStatus: string;
   currentBalance: number;
   pastDueAmount: number;
@@ -508,6 +509,7 @@ export interface PlanInfo {
   name: string;
   monthlyPrice: number;
   description: string;
+  audience: "RESIDENTIAL" | "BUSINESS";
 }
 
 // Same catalog the phone AI offers in the PLAN_CHANGE subflow, so "view plans" in the portal

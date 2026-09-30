@@ -19,6 +19,7 @@ function toPublic(row: CustomerRow) {
     email: row.email,
     ban: row.ban,
     planName: row.plan_name,
+    customerType: row.customer_type,
     accountStatus: row.account_status,
     currentBalance: row.current_balance,
     pastDueAmount: row.past_due_amount,
@@ -118,11 +119,16 @@ customerAuthRouter.post("/purchase-plan", requireCustomerAuth, (req, res) => {
   const pin = crypto.randomInt(1000, 10000).toString();
   const pinHash = bcrypt.hashSync(pin, 10);
 
+  // customer_type follows whichever plan was actually bought (found and fixed Sep 30 - this used to
+  // be left at the column's RESIDENTIAL default no matter what, so every web-purchased business
+  // customer was silently mis-tagged as residential). The phone new-customer flow asks this
+  // explicitly; the web flow infers it from the plan itself since residential/business are now
+  // separate product lines in PLAN_CATALOG.
   db.prepare(`
     UPDATE customers
-    SET ban = @ban, pin_hash = @pinHash, plan_name = @planName, account_status = 'ACTIVE'
+    SET ban = @ban, pin_hash = @pinHash, plan_name = @planName, account_status = 'ACTIVE', customer_type = @customerType
     WHERE id = @id
-  `).run({ "@ban": ban, "@pinHash": pinHash, "@planName": plan.name, "@id": customerId });
+  `).run({ "@ban": ban, "@pinHash": pinHash, "@planName": plan.name, "@customerType": plan.audience, "@id": customerId });
 
   res.status(201).json({ ban, pin, planName: plan.name });
 });

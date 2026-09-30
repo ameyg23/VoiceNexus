@@ -36,6 +36,7 @@ import {
   findActiveOutage,
   isServiceAvailable,
   type CustomerRow,
+  type PlanInfo,
 } from "./businessLogic.js";
 import { issueOtp, verifyOtp, getDevOtp } from "./otpService.js";
 import { phraseResponseAI, translateAI, type VoiceStyle } from "./aiEngine.js";
@@ -221,6 +222,14 @@ function spokenDigits(s: string): string {
 const BARE_NO_RE = /^\s*(no|nope|nah|neither|none of them|no thanks)\b[.!]?\s*$/i;
 const AGENT_RE = /\b(agent|representative|human|real person|live person|operator|customer service rep)\b|speak (to|with) (a |an )?(person|someone)/i;
 const FAREWELL_RE = /\b(bye|goodbye|that'?s all|that is all|nothing else|no thanks|no thank you|i'?m (all )?(good|set|done)|that'?s it|all set)\b/i;
+// A prospect (or anyone not yet verified) asking a general catalog question - "what plans do you
+// have", "tell me about your services" - isn't account-specific, so it needs no verification and
+// works at any point, mid-subflow included (user request, Sep 30: a new customer should be able to
+// ask about plans/packages/services and get a brief, summarized answer, not be forced through the
+// sign-up flow first). Deliberately narrower than PLAN_CHANGE's "what plans" keyword (which only ever
+// fires post-auth, from classify()) so the two never compete for the same utterance.
+const PLANS_OR_SERVICES_RE =
+  /\b(what|which) (plans?|packages?|services?)\b|\btell me about (your |the )?(plans?|packages?|services?)\b|\bplans? (do you have|(are )?available|options)\b|\bwhat do you offer\b|\bwhat can you help (me )?with\b/i;
 
 export async function advanceAuthSession(conversationId: string, utterance: string): Promise<TurnResult> {
   const settings = getSettings();
@@ -246,6 +255,14 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
   if (AGENT_RE.test(utterance)) {
     noteIntent(ctx.conversationId, "AGENT_REQUEST");
     return agentRequested(ctx);
+  }
+
+  // Public catalog question, answerable with no account access - see PLANS_OR_SERVICES_RE above.
+  // Skipped once authenticated: PLAN_CHANGE's own "what plans" keyword already answers this there,
+  // personalized against the caller's current plan, which is strictly better than a generic answer.
+  if (session.stage !== "AUTHENTICATED" && PLANS_OR_SERVICES_RE.test(utterance)) {
+    const resume = pendingPrompt(subflow, session.stage);
+    return reply(ctx, resume ? `${plansAndServicesText()} ${resume}` : plansAndServicesText());
   }
 
   if (subflow) return handleSubflow(ctx, subflow);
@@ -448,7 +465,7 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
     }
 
     case "PLAN_CHANGE": {
-      const plan = utterance ? await extractPlan(utterance) : null;
+      const plan = utterance ? await extractPlan(utterance, customer.customer_type) : null;
       if (plan && plan.name !== customer.plan_name) return confirmPlan(ctx, customer, plan.name);
       setSubflow(ctx.conversationId, { type: "PLAN_CHANGE", step: "CHOOSE" });
       return reply(ctx, planOptionsText(customer));
@@ -500,9 +517,78 @@ function outageText(o: { description: string; eta: string | null }): string {
   return `There's a known outage in your area: ${o.description}. Our crews are on it${o.eta ? ` and we expect service back ${o.eta}` : ""}. There's no need to troubleshoot; service will come back on its own.`;
 }
 
+// Brief, catalog-wide summary for anyone asking "what plans/services do you offer" before we know
+// who they are - deterministic (not AI-phrased) since the answer is small, static, and must never be
+// wrong. Computed from the live PLAN_CATALOG so it can't drift if plans are added or repriced. Covers
+// both audiences explicitly (found and fixed Sep 30 - residential and business are separate product
+// lines, see PLAN_CATALOG's comment), since we don't yet know which one the caller is.
+function plansAndServicesText(): string {
+  const byAudience = (audience: CustomerType) => PLAN_CATALOG.filter((p) => p.audience === audience);
+  // Just the speed/headline, not the full description - business plans' descriptions already spell
+  // out "static IP, priority support" themselves, so summarizing the full description for both the
+  // cheapest and fastest plan repeated that phrase three times in one sentence (caught live, Sep 30).
+  const headline = (p: PlanInfo) => p.description.split(",")[0];
+  const summarize = (plans: PlanInfo[]) => {
+    const cheapest = plans.reduce((a, b) => (a.monthlyPrice < b.monthlyPrice ? a : b));
+    const fastest = plans.reduce((a, b) => (a.monthlyPrice > b.monthlyPrice ? a : b));
+    return `starting at $${cheapest.monthlyPrice} a month for ${headline(cheapest)}, up to $${fastest.monthlyPrice} a month for ${headline(fastest)}`;
+  };
+  const residential = byAudience("RESIDENTIAL").filter((p) => !/\btv\b/i.test(p.name));
+  const hasTvBundle = byAudience("RESIDENTIAL").some((p) => /\btv\b/i.test(p.name));
+  const business = byAudience("BUSINESS");
+  const plans = `For home, we have internet plans ${summarize(residential)}${hasTvBundle ? ", with optional TV bundles too" : ""}. For business, plans run ${summarize(
+    business
+  )}, with a static IP and priority support included.`;
+  const services =
+    "Beyond internet plans, we handle billing and payments, plan changes, outage checks and technical support, scheduling technician visits, and signing up new residential or business service, all right here on the phone.";
+  return `${plans} ${services}`;
+}
+
+// What to re-ask after answering an out-of-flow question, so the caller's place in the sign-up or
+// verification flow isn't lost. Returns null for subflows/stages where a generic re-prompt would be
+// worse than none (e.g. mid-callback-scheduling) - the caller's next turn still resumes them normally.
+function pendingPrompt(subflow: Subflow | null, stage: AuthStage): string | null {
+  if (subflow) {
+    switch (subflow.type) {
+      case "CUSTOMER_KIND":
+        return "So, are you an existing Springfield Fiber customer, or a new customer?";
+      case "ACCOUNT_TYPE":
+        return subflow.forNew ? "Are you looking for residential or business service?" : "Is this a residential or a business account?";
+      case "NEW_CUSTOMER_ZIP":
+        return "What ZIP code would you like service at?";
+      case "NEW_CUSTOMER_OFFER":
+        return "Would you like me to transfer you to sign up?";
+      case "EXISTING_SERVICE_ZIP":
+        return "What ZIP code would you like me to check?";
+      case "CONFIRM_BAN":
+        return `Just to confirm, is your account number ${spokenDigits(subflow.ban)} right?`;
+      case "CONFIRM_PIN":
+        return `Just to confirm, is your PIN ${spokenDigits(subflow.pin)} right?`;
+      default:
+        return null;
+    }
+  }
+  switch (stage) {
+    case "AWAITING_INTENT":
+      return "Now, what can I help you with today?";
+    case "AWAITING_BAN":
+      return "Now, could you give me your account number?";
+    case "AWAITING_PIN":
+      return "Now, could you tell me your 4-digit PIN?";
+    case "AWAITING_OTP":
+      return "Now, could you read me the one-time code?";
+    default:
+      return null;
+  }
+}
+
 function planOptionsText(customer: CustomerRow): string {
   const current = findPlan(customer.plan_name);
-  const options = PLAN_CATALOG.filter((p) => p.name !== customer.plan_name).map((p) => `${p.name} for $${p.monthlyPrice} a month`);
+  // Only offer plans from the caller's own audience - a residential account never gets pitched a
+  // business plan (or the reverse), same rule the PLAN_CHANGE subflow's own matching now follows.
+  const options = PLAN_CATALOG.filter((p) => p.audience === customer.customer_type && p.name !== customer.plan_name).map(
+    (p) => `${p.name} for $${p.monthlyPrice} a month`
+  );
   return `You're currently on ${customer.plan_name}${current ? ` at $${current.monthlyPrice} a month` : ""}. The other plans are: ${options.join(", ")}. Which one would you like?`;
 }
 
@@ -723,7 +809,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       const customer = requireCustomer(ctx.session);
       if (sf.step === "CHOOSE") {
         // A plan name wins over any "no"/"don't" in the sentence ("the fastest one, but I don't need TV").
-        const plan = await extractPlan(u);
+        const plan = await extractPlan(u, customer.customer_type);
         if (!plan) {
           if (isCancel(u) || BARE_NO_RE.test(u)) return cancelled();
           return reply(ctx, `Sorry, I didn't catch which plan. ${planOptionsText(customer)}`);
@@ -734,7 +820,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       const answer = await parseYesNo(u, `Switch to ${sf.plan}?`);
       if (answer === "NO") return cancelled();
       if (answer !== "YES") {
-        const other = await extractPlan(u);
+        const other = await extractPlan(u, customer.customer_type);
         if (other && other.name !== sf.plan && other.name !== customer.plan_name) return confirmPlan(ctx, customer, other.name);
         return reply(ctx, `Should I switch you to ${sf.plan}? Please say yes or no.`);
       }

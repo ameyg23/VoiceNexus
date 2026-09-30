@@ -130,16 +130,24 @@ export interface PlanInfo {
   name: string;
   monthlyPrice: number;
   description: string;
+  audience: CustomerType;
 }
 
+// Residential and business are genuinely separate product lines (found and fixed Sep 30 - the
+// catalog used to be one flat residential-shaped list, so every business-tagged customer_type was
+// silently offered and sold residential plans, on the phone and on the web alike). Business plans add
+// a static IP and priority support, which is the real differentiator ISPs sell on, not just a relabel.
 export const PLAN_CATALOG: PlanInfo[] = [
-  { name: "Starter", monthlyPrice: 30, description: "100 Mbps internet" },
-  { name: "Cable Basic", monthlyPrice: 45, description: "basic cable TV, no internet" },
-  { name: "Fiber 300", monthlyPrice: 55, description: "300 Mbps fiber internet" },
-  { name: "Fiber 500", monthlyPrice: 70, description: "500 Mbps fiber internet" },
-  { name: "Fiber 1000", monthlyPrice: 90, description: "1 gig fiber internet" },
-  { name: "Fiber 500 + TV", monthlyPrice: 110, description: "500 Mbps fiber plus TV" },
-  { name: "Fiber 1000 + TV", monthlyPrice: 130, description: "1 gig fiber plus TV" },
+  { name: "Starter", monthlyPrice: 30, description: "100 Mbps internet", audience: "RESIDENTIAL" },
+  { name: "Cable Basic", monthlyPrice: 45, description: "basic cable TV, no internet", audience: "RESIDENTIAL" },
+  { name: "Fiber 300", monthlyPrice: 55, description: "300 Mbps fiber internet", audience: "RESIDENTIAL" },
+  { name: "Fiber 500", monthlyPrice: 70, description: "500 Mbps fiber internet", audience: "RESIDENTIAL" },
+  { name: "Fiber 1000", monthlyPrice: 90, description: "1 gig fiber internet", audience: "RESIDENTIAL" },
+  { name: "Fiber 500 + TV", monthlyPrice: 110, description: "500 Mbps fiber plus TV", audience: "RESIDENTIAL" },
+  { name: "Fiber 1000 + TV", monthlyPrice: 130, description: "1 gig fiber plus TV", audience: "RESIDENTIAL" },
+  { name: "Business 300", monthlyPrice: 89, description: "300 Mbps fiber internet, static IP, priority support", audience: "BUSINESS" },
+  { name: "Business 500", monthlyPrice: 119, description: "500 Mbps fiber internet, static IP, priority support", audience: "BUSINESS" },
+  { name: "Business 1000", monthlyPrice: 179, description: "1 gig fiber internet, static IP, priority support, 24/7 priority line", audience: "BUSINESS" },
 ];
 
 export function findPlan(name: string): PlanInfo | undefined {
@@ -147,16 +155,22 @@ export function findPlan(name: string): PlanInfo | undefined {
 }
 
 // Deterministic plan matching from speech ("the one gig plan with TV", "fiber five hundred").
-export function matchPlanFromText(text: string): PlanInfo | null {
+// Audience-scoped (default residential) so a business caller saying "the 500 plan" matches Business
+// 500, not the similarly-priced residential Fiber 500 - the two are different products at different
+// price points, not the same plan under two names.
+export function matchPlanFromText(text: string, audience: CustomerType = "RESIDENTIAL"): PlanInfo | null {
   const t = text.toLowerCase();
-  const mentionsTv = /\b(tv|television|cable tv|channels)\b/.test(t);
-  // "no TV", "without TV", "I don't need television", "not the TV one"
-  const negatedTv = /\b(no|without|not|don'?t (need|want)|do not (need|want)|skip( the)?)\b[\w\s']{0,12}\b(tv|television|channels)\b/.test(t);
-  const tv = mentionsTv && !negatedTv;
   let speed: 300 | 500 | 1000 | null = null;
   if (/\b(1000|1,000|thousand|gig|gigabit|1 ?g|fastest|quickest|top speed)\b/.test(t)) speed = 1000;
   else if (/\b(500|five hundred)\b/.test(t)) speed = 500;
   else if (/\b(300|three hundred)\b/.test(t)) speed = 300;
+
+  if (audience === "BUSINESS") return speed ? (findPlan(`Business ${speed}`) ?? null) : null;
+
+  const mentionsTv = /\b(tv|television|cable tv|channels)\b/.test(t);
+  // "no TV", "without TV", "I don't need television", "not the TV one"
+  const negatedTv = /\b(no|without|not|don'?t (need|want)|do not (need|want)|skip( the)?)\b[\w\s']{0,12}\b(tv|television|channels)\b/.test(t);
+  const tv = mentionsTv && !negatedTv;
 
   if (speed) return findPlan(`Fiber ${speed}${tv ? " + TV" : ""}`) ?? findPlan(`Fiber ${speed}`) ?? null;
   if (/\bstarter\b/.test(t)) return findPlan("Starter") ?? null;

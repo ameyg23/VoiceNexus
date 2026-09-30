@@ -356,6 +356,10 @@ async function scenarios() {
     await verifyPin(call, "100003", "5560");
     const t = await call.say("I want to upgrade my plan");
     expectText(t, /only help with things related to your .* account or service.*live agent/i, "disabled intent: honest limit + escalation offer");
+    // Restore before later scenarios (21/22 exercise PLAN_CHANGE again) — this was silently relying on
+    // restore()'s end-of-run settings reset before, which happened to work only because nothing after
+    // #14 needed PLAN_CHANGE enabled; found while adding scenario 22.
+    setSetting("intentOverrides", { PLAN_CHANGE: { enabled: true, examples: [] } });
   }
 
   console.log("\n15. Ops dashboard APIs over the calls above (employee session)");
@@ -562,6 +566,61 @@ async function scenarios() {
     for (const t of ["transcript_turns", "auth_sessions", "otps", "call_actions", "escalations"]) db.prepare(`DELETE FROM ${t} WHERE conversation_id = ?`).run(call.id);
     db.prepare(`DELETE FROM conversations WHERE id = ?`).run(call.id);
     db.prepare(`DELETE FROM customers WHERE email = @e1 OR email = @e2`).run({ "@e1": email, "@e2": email2 });
+  }
+
+  console.log("\n21. Pre-auth 'what plans do you have' — answered with no account, then the sign-up flow resumes exactly where it left off (Sep 30)");
+  {
+    const call = await Call.start();
+    await call.say("what's my balance");
+    const plans = await call.say("actually, can you tell me about your plans and services first");
+    expectText(plans, /internet plans/i, "answers the plan catalog, no account needed");
+    expectText(plans, /business/i, "mentions business plans too, not residential-only");
+    expectText(plans, /billing and payments/i, "also summarizes what the assistant can help with");
+    expectText(plans, /existing springfield fiber customer, or a new customer/i, "resumes exactly where the flow left off");
+    const t = await verifyPin(call, "100001", "4821");
+    expectText(t, /verified.*\$\d+\.\d\d/i, "the flow continues normally afterward, unaffected by the aside");
+  }
+
+  console.log("\n22. Web purchase of a business plan tags the account BUSINESS, and phone plan-change stays business-scoped (Sep 30)");
+  {
+    const email = `biz-prospect-${Date.now()}@example.com`;
+    const signupRes = await fetch(`${BASE}/api/auth/customer/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Test Biz Prospect", email, password: "biz-test-pass" }),
+    });
+    const cookie = (signupRes.headers.getSetCookie().find((c) => c.startsWith("vn_customer_session=")) ?? "").split(";")[0];
+    const api = async (p: string, init: RequestInit = {}) => {
+      const res = await fetch(`${BASE}${p}`, { ...init, headers: { "Content-Type": "application/json", cookie, ...(init.headers ?? {}) } });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+
+    const plansRes = await api("/api/auth/customer/plans");
+    check(
+      "the plans catalog offers both residential and business tiers",
+      plansRes.json.plans.some((p: { audience: string }) => p.audience === "RESIDENTIAL") && plansRes.json.plans.some((p: { audience: string }) => p.audience === "BUSINESS"),
+      JSON.stringify(plansRes.json.plans.map((p: { name: string }) => p.name))
+    );
+
+    const purchase = await api("/api/auth/customer/purchase-plan", { method: "POST", body: JSON.stringify({ planName: "Business 500" }) });
+    check("purchase succeeds on a business plan", purchase.status === 201, JSON.stringify(purchase.json));
+
+    const custId = one(`SELECT id id FROM customers WHERE email = ?`, email)!.id as string;
+    check(
+      "customer_type set to BUSINESS from the plan actually bought, not left at the RESIDENTIAL column default",
+      one(`SELECT customer_type t FROM customers WHERE id = ?`, custId)!.t === "BUSINESS"
+    );
+
+    const call = await Call.start();
+    await call.say("what's my balance");
+    await verifyPin(call, purchase.json.ban.replace("BAN", ""), purchase.json.pin);
+    const list = await call.say("what other plans do you have");
+    expectText(list, /Business 300|Business 1000/i, "lists other business plans");
+    check("never lists residential plans to a business account", !/\bFiber \d/i.test(list.aiText), list.aiText);
+
+    for (const t of ["transcript_turns", "auth_sessions", "otps", "call_actions", "escalations"]) db.prepare(`DELETE FROM ${t} WHERE conversation_id = ?`).run(call.id);
+    db.prepare(`DELETE FROM conversations WHERE id = ?`).run(call.id);
+    db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
   }
 }
 

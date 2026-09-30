@@ -38,6 +38,7 @@ export default function GetStartedPage() {
   const [error, setError] = useState<string | null>(null);
   const [purchased, setPurchased] = useState<{ ban: string; pin: string; planName: string } | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [planAudience, setPlanAudience] = useState<"RESIDENTIAL" | "BUSINESS">("RESIDENTIAL");
 
   useEffect(() => {
     customerMe()
@@ -223,7 +224,10 @@ export default function GetStartedPage() {
               </div>
             </section>
 
-            {/* Plans */}
+            {/* Plans - residential and business are shown as two distinct groups (found and fixed
+                Sep 30: this used to be one flat list with no business-tier plans at all, so a
+                business prospect was quietly offered the same catalog as a home customer). Picking
+                a business plan here is also what tags the new account BUSINESS server-side. */}
             <section id="plans" className="mt-12 scroll-mt-6">
               <span className="kicker">Plans</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Choose a plan to get started</h2>
@@ -233,27 +237,43 @@ export default function GetStartedPage() {
               </p>
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
 
+              <div className="mt-5 inline-flex rounded-full border border-gray-200 bg-white p-1">
+                {(["RESIDENTIAL", "BUSINESS"] as const).map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => setPlanAudience(a)}
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                      planAudience === a ? "bg-brand-600 text-white" : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    {a === "RESIDENTIAL" ? "For your home" : "For your business"}
+                  </button>
+                ))}
+              </div>
+
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {!plans ? (
                   <p className="text-sm text-gray-400">Loading plans…</p>
                 ) : (
-                  plans.map((plan) => (
-                    <div key={plan.name} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                      <p className="font-semibold text-gray-900">{plan.name}</p>
-                      <p className="mt-1 text-2xl font-bold text-brand-600">
-                        {formatMoney(plan.monthlyPrice)}
-                        <span className="text-sm font-normal text-gray-500">/mo</span>
-                      </p>
-                      <p className="mt-1 text-sm text-gray-500">{plan.description}</p>
-                      <button
-                        onClick={() => void handleBuy(plan.name)}
-                        disabled={buying !== null}
-                        className="btn btn-primary mt-4 w-full py-2 text-sm disabled:opacity-50"
-                      >
-                        {buying === plan.name ? "Setting up…" : "Choose this plan"}
-                      </button>
-                    </div>
-                  ))
+                  plans
+                    .filter((plan) => plan.audience === planAudience)
+                    .map((plan) => (
+                      <div key={plan.name} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <p className="font-semibold text-gray-900">{plan.name}</p>
+                        <p className="mt-1 text-2xl font-bold text-brand-600">
+                          {formatMoney(plan.monthlyPrice)}
+                          <span className="text-sm font-normal text-gray-500">/mo</span>
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500">{plan.description}</p>
+                        <button
+                          onClick={() => void handleBuy(plan.name)}
+                          disabled={buying !== null}
+                          className="btn btn-primary mt-4 w-full py-2 text-sm disabled:opacity-50"
+                        >
+                          {buying === plan.name ? "Setting up…" : "Choose this plan"}
+                        </button>
+                      </div>
+                    ))
                 )}
               </div>
             </section>

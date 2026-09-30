@@ -156,7 +156,9 @@ export default function PortalAccountPage() {
           <Fact label="Next bill" value={customer.nextBillingDueDate ? formatDateOnly(customer.nextBillingDueDate) : "-"} />
         </div>
 
-        {/* Plans / upgrade */}
+        {/* Plans / upgrade - scoped to the customer's own account type (residential or business are
+            separate product lines, see PLAN_CATALOG; a residential account never sees business plans
+            here, matching what the phone PLAN_CHANGE flow would actually offer, and vice versa). */}
         <section id="plans" className="mt-8">
           <span className="kicker">Plans</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Available plans</h2>
@@ -165,7 +167,7 @@ export default function PortalAccountPage() {
             <p className="mt-4 text-sm text-gray-400">Loading…</p>
           ) : (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {plans.map((p) => {
+              {plans.filter((p) => p.audience === customer.customerType).map((p) => {
                 const isCurrent = p.name.toLowerCase() === customer.planName.toLowerCase();
                 return (
                   <div
