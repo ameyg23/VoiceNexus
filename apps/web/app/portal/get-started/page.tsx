@@ -407,6 +407,22 @@ export default function GetStartedPage() {
                 ))}
               </div>
 
+              {/* Offer callouts, one per audience (user follow-up, Sep 30: "add those 5 discount and
+                  offer sections as well... just mean more promo banners like Fidium's"). Both tied to
+                  real, already-true pricing/inclusions, same posture as the top promo banner -
+                  bundle pricing is a genuine $5/mo saving versus buying the parts separately
+                  (Fiber 500 $70 + Cable Basic $45 = $115 vs. Fiber 500 + TV at $110), and the
+                  business line already includes a static IP/priority support at no extra fee. */}
+              {planAudience === "RESIDENTIAL" ? (
+                <p className="mt-4 rounded-lg bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
+                  Bundle and save: add TV to Fiber 500 or Fiber 1000 and pay $5/mo less than buying internet and TV separately.
+                </p>
+              ) : (
+                <p className="mt-4 rounded-lg bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
+                  Every business plan includes a static IP and priority support, already built into the price below - no add-on fees.
+                </p>
+              )}
+
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {!plans ? (
                   <p className="text-sm text-gray-400">Loading plans…</p>
@@ -519,6 +535,26 @@ export default function GetStartedPage() {
           </main>
         </>
       )}
+
+      {/* Utility footer - "My account" / "Employee login" links, both to the shared /login page,
+          which already routes a customer to /portal/account and an employee to /admin/dashboard
+          (user request, Sep 30: "From the commercial page, if we go to My Account, users can get
+          into their account, and admins can get into their account at the backend"). No new pages
+          or audience picker needed - /login already does exactly this, this just makes it reachable
+          from here too, the way fidiumfiber.com's own nav always carries a "My account" link. */}
+      <footer className="border-t border-gray-200 py-6">
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
+          <p>© {new Date().getFullYear()} {brand}</p>
+          <div className="flex gap-4">
+            <a href="/login" className="hover:text-brand-600">
+              My account
+            </a>
+            <a href="/login" className="hover:text-brand-600">
+              Employee login
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
