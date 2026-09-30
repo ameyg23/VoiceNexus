@@ -28,7 +28,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
 
   return (
     <div className="flex min-h-screen bg-white">
-      <aside className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-ink-950 p-12 text-white lg:flex">
+      <aside className="relative hidden w-[44%] flex-col overflow-hidden bg-ink-950 p-12 text-white lg:flex">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "22px 22px" }}
@@ -39,7 +39,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
           <span className="text-lg font-bold">Springfield Fiber</span>
         </Link>
 
-        <div className="relative max-w-md">
+        <div className="relative mt-16 max-w-md">
           <span className="kicker text-brand-500">Springfield Fiber</span>
           <h2 className="mt-3 text-3xl font-bold leading-tight">
             Fiber internet that <span className="text-brand-500">just works.</span>
@@ -57,12 +57,12 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
           </ul>
         </div>
 
-        <p className="relative text-xs text-gray-500">© {new Date().getFullYear()} Springfield Fiber · Powered by VoiceNexus</p>
+        <p className="relative mt-auto text-xs text-gray-500">© {new Date().getFullYear()} Springfield Fiber · Powered by VoiceNexus</p>
         <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-brand-600/10" />
         <div className="pointer-events-none absolute -right-10 top-1/3 h-40 w-40 rounded-full bg-brand-600/10" />
       </aside>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-8">
+      <main className="flex flex-1 justify-center px-4 py-12 sm:px-8 lg:items-start lg:pt-24">
         <div className="w-full max-w-sm">
           <Link href="/" className="mb-10 flex items-center gap-2 lg:hidden">
             <LogoMark className="h-7 w-7" />

@@ -190,7 +190,7 @@ export default function PortalAccountPage() {
           )}
         </section>
 
-        <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <div className="mt-8 grid items-start gap-4 lg:grid-cols-2">
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
               <CalendarIcon className="h-4 w-4 text-brand-600" /> Coming up

@@ -70,7 +70,7 @@ export default function AdminDashboardPage() {
             </Card>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
             <Card title="Intents Distribution">
               <Donut data={s.intents.map((i) => ({ label: intentLabel(i.intent), value: i.count }))} centerLabel="Total Calls" />
             </Card>

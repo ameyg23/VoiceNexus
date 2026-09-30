@@ -44,7 +44,7 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <Card title="Intent Performance" subtitle="Resolution performance by customer intent">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -79,7 +79,7 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
             <Card title="Handle Time Analysis" subtitle="Average time from connect to close">
               <Columns
                 items={[
@@ -121,7 +121,7 @@ export default function ReportsPage() {
             />
           </Card>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
             <Card title="Verification Funnel" subtitle="How far callers get through identity verification">
               <BarList
                 max={data.funnel.calls}

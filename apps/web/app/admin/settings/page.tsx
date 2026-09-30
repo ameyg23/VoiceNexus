@@ -90,7 +90,7 @@ export default function SettingsPage() {
     >
       <ErrorNote error={error} />
       {form && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <Card title="Brand voice & language" subtitle="VN-7">
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
