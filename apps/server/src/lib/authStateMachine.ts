@@ -914,7 +914,7 @@ function escalationReply(ctx: Ctx, reason: EscalationReason): TurnResult {
     ? "I've captured a summary of our conversation, so you won't have to repeat yourself."
     : "I've passed along what you've told me so far; the agent will verify your identity first.";
   const topic = intent ? INTENT_TRANSFER_TOPIC[intent] : undefined;
-  const about = topic ? ` about ${topic}` : "";
+  const about = topic ? ` regarding ${topic}` : "";
   return reply(ctx, `${intro} ${context} Transferring you${about} to agent ${spokenDigits(code)}.`, { endCall: true, transfer: true });
 }
 

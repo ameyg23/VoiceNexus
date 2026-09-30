@@ -423,7 +423,7 @@ async function scenarios() {
     // the caller stated a real topic before the lockout, so per-intent routing applies even here.
     expectText(
       third,
-      /transferring you about your billing due date to agent 3 0 2 3/i,
+      /transferring you regarding your billing due date to agent 3 0 2 3/i,
       "speaks BILLING_DUE_DATE's own routing code AND names the topic, not just the generic one"
     );
     const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
