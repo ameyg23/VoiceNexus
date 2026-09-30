@@ -17,6 +17,14 @@ import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
 import { LogoMark, PhoneIcon, CalendarIcon, CheckIcon, LogoutIcon, HeadsetIcon, ArrowRightIcon } from "../../../components/icons";
 import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../lib/format";
 
+// Same marketing labels shown on /portal/get-started (frontend-only, not part of PLAN_CATALOG).
+const PLAN_BADGES: Record<string, string> = {
+  "Fiber 500": "Most Popular",
+  "Fiber 1000": "Best Value",
+  "Business 500": "Most Popular",
+  "Business 1000": "Best Value",
+};
+
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What do I need on hand when I call?",
@@ -176,7 +184,7 @@ export default function PortalAccountPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold text-gray-900">{p.name}</p>
-                      {isCurrent && <Badge tone="success">Current plan</Badge>}
+                      {isCurrent ? <Badge tone="success">Current plan</Badge> : PLAN_BADGES[p.name] ? <Badge tone="info">{PLAN_BADGES[p.name]}</Badge> : null}
                     </div>
                     <p className="mt-1 text-xl font-bold text-brand-600">{formatMoney(p.monthlyPrice)}<span className="text-sm font-medium text-gray-500">/mo</span></p>
                     <p className="mt-1 text-sm text-gray-600">{p.description}</p>

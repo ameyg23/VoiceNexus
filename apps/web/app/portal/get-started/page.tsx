@@ -46,6 +46,36 @@ const USE_CASES = [
   { title: "Always-on for business", body: "A static IP and priority support keep point-of-sale, calls, and cloud tools running without a hitch." },
 ];
 
+// Frontend-only marketing labels, not part of PLAN_CATALOG (the phone AI's plan list stays
+// unlabeled - "Most Popular" means nothing read aloud). Picked on real value: the mid-tier plan
+// balances speed/price, the top tier is the biggest speed jump per dollar.
+const PLAN_BADGES: Record<string, string> = {
+  "Fiber 500": "Most Popular",
+  "Fiber 1000": "Best Value",
+  "Business 500": "Most Popular",
+  "Business 1000": "Best Value",
+};
+
+// Customer promises - what we commit to on every account, grounded in real features elsewhere on
+// this page (installation, wifi setup, 24/7 support, no contracts, live-agent access), not new claims.
+const PROMISES = [
+  { title: "Every install, tested and confirmed", body: "We confirm your connection at setup so you know you're getting the speed you're paying for." },
+  { title: "Whole-home wifi, set up for you", body: "We test your wifi coverage at install so there are no dead zones from day one." },
+  { title: "24/7 support, real help when you need it", body: "Automated help around the clock, with a live agent always one ask away." },
+  { title: "No contracts, ever", body: "Month-to-month pricing. Cancel any time, no early-termination fees." },
+  { title: "A network we watch around the clock", body: "Proactively monitored to catch issues before they reach you." },
+  { title: "Ask for a person, any time", body: "Say the word during any call and you're transferred right away, no waiting in a queue." },
+];
+
+// Standard fiber-vs-cable/DSL marketing points (real, well-known technical differences - fiber is
+// genuinely not shared with the neighborhood and isn't weather-sensitive the way copper/coax is).
+const COMPARISON = [
+  { label: "Upload speeds", fiber: "As fast as downloads", regular: "Often much slower" },
+  { label: "Peak-hour slowdowns", fiber: "None, your line isn't shared", regular: "Common, shared with the neighborhood" },
+  { label: "Affected by weather", fiber: "No", regular: "Can drop in storms" },
+  { label: "Contract required", fiber: "No, cancel any time", regular: "Often 1-2 years" },
+];
+
 const FAQS: { q: string; a: string }[] = [
   { q: "Is Springfield Fiber available in my area?", a: "In most covered ZIP codes, yes. Use the ZIP checker above for an instant answer, or call the number below and our assistant can check it for you." },
   { q: "Are there contracts or data caps?", a: "No. Every plan is month-to-month with unlimited data. Cancel any time, no early-termination fees." },
@@ -181,6 +211,18 @@ export default function GetStartedPage() {
         </main>
       ) : (
         <>
+          {/* Promo banner - illustrative marketing copy, same "clearly a demo embellishment" posture
+              already documented on STATS below (not pulled from any real filing). Deliberately tied
+              to a feature that's actually true (free installation, already in FEATURES/PROMISES)
+              rather than a fabricated discount percentage - purchase-plan charges the plan's exact
+              listed price, so a banner claiming a % off that never actually applies would be
+              misleading, not just embellished. */}
+          <div className="border-b border-amber-200 bg-amber-50">
+            <p className="mx-auto max-w-4xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
+              New customer offer: free professional installation on every plan, no exceptions.
+            </p>
+          </div>
+
           {/* Hero — a normal commercial-site landing, not a pricing table up front (user request:
               "we should not directly throw all the plans in their face"; structure loosely inspired
               by fidiumfiber.com's split hero-with-photo, not copied). Light background, not the dark
@@ -249,6 +291,48 @@ export default function GetStartedPage() {
               </div>
             </section>
           </div>
+
+          {/* The Springfield Promise + fiber vs. regular comparison - customer promises and how we're
+              different from traditional cable/DSL (user request, Sep 30: "Show customer promises and
+              the difference between regular fiber and Springfield fiber. We can market ourselves
+              there"). Soft-tint full-bleed band, a third visual treatment alongside the white cards
+              and dark band already on the page. */}
+          <section className="bg-brand-50/60 py-12">
+            <div className="mx-auto max-w-4xl px-4 sm:px-6">
+              <span className="kicker">The Springfield Promise</span>
+              <h2 className="mt-2 text-2xl font-bold text-gray-900">What we promise, every time.</h2>
+              <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                {PROMISES.map((p) => (
+                  <div key={p.title} className="flex items-start gap-3">
+                    <CheckIcon className="mt-1 h-4 w-4 shrink-0 text-brand-600" />
+                    <div>
+                      <p className="font-semibold text-gray-900">{p.title}</p>
+                      <p className="mt-1 text-sm text-gray-600">{p.body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-12">
+                <span className="kicker">Fiber vs. traditional internet</span>
+                <h2 className="mt-2 text-2xl font-bold text-gray-900">Not all internet is built the same.</h2>
+                <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="grid grid-cols-3 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <div className="px-3 py-3 sm:px-4"></div>
+                    <div className="px-3 py-3 text-brand-600 sm:px-4">Springfield Fiber</div>
+                    <div className="px-3 py-3 sm:px-4">Cable/DSL</div>
+                  </div>
+                  {COMPARISON.map((row, i) => (
+                    <div key={row.label} className={`grid grid-cols-3 text-xs sm:text-sm ${i !== COMPARISON.length - 1 ? "border-b border-gray-100" : ""}`}>
+                      <div className="px-3 py-3 font-medium text-gray-900 sm:px-4">{row.label}</div>
+                      <div className="px-3 py-3 text-gray-700 sm:px-4">{row.fiber}</div>
+                      <div className="px-3 py-3 text-gray-500 sm:px-4">{row.regular}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* How people use it - a dark, plain-text band for visual contrast against the light
               sections around it (Fidium-style "how people use it at home" pattern, adapted to cover
@@ -330,7 +414,12 @@ export default function GetStartedPage() {
                   plans
                     .filter((plan) => plan.audience === planAudience)
                     .map((plan) => (
-                      <div key={plan.name} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                      <div key={plan.name} className={`relative rounded-2xl border bg-white p-5 shadow-sm ${PLAN_BADGES[plan.name] ? "border-brand-300" : "border-gray-200"}`}>
+                        {PLAN_BADGES[plan.name] && (
+                          <span className="absolute -top-3 left-4 rounded-full bg-brand-600 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                            {PLAN_BADGES[plan.name]}
+                          </span>
+                        )}
                         <p className="font-semibold text-gray-900">{plan.name}</p>
                         <p className="mt-1 text-2xl font-bold text-brand-600">
                           {formatMoney(plan.monthlyPrice)}
