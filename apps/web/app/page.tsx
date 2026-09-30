@@ -243,19 +243,16 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* Utility footer - "My account" / "Employee login" links, both to the shared /login page,
-          which already routes a customer to /portal/account and an employee to /admin/dashboard. */}
+      {/* Utility footer - "My account" (user request, Sep 30 - dropped the separate "Employee
+          login" link that used to sit next to it, no need to advertise a staff login on a public
+          commercial page). Routes to the shared /login, which already sends an employee to
+          /admin/dashboard and a customer to /portal/account. */}
       <footer className="border-t border-gray-200 py-6">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} {brand}</p>
-          <div className="flex gap-4">
-            <a href="/login" className="hover:text-brand-600">
-              My account
-            </a>
-            <a href="/login" className="hover:text-brand-600">
-              Employee login
-            </a>
-          </div>
+          <a href="/login" className="hover:text-brand-600">
+            My account
+          </a>
         </div>
       </footer>
     </div>
