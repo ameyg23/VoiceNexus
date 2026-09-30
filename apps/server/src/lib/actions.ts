@@ -45,6 +45,31 @@ export function actionsForConversation(conversationId: string): CallActionRow[] 
   return db.prepare(`SELECT * FROM call_actions WHERE conversation_id = @cid ORDER BY id`).all({ "@cid": conversationId }) as unknown as CallActionRow[];
 }
 
+export interface CustomerEventRow {
+  id: number;
+  customer_id: string;
+  type: string;
+  description: string;
+  created_at: string;
+}
+
+// Sibling to recordAction, for a self-service action with no call behind it (found Sep 30: switching
+// a plan on the portal had nowhere to log to, since call_actions.conversation_id is NOT NULL - see
+// migration 008). Feeds the portal's "Recent activity" only; nothing else reads this table yet.
+export function recordCustomerEvent(customerId: string, type: string, description: string): void {
+  db.prepare(`INSERT INTO customer_events (customer_id, type, description) VALUES (@custId, @type, @description)`).run({
+    "@custId": customerId,
+    "@type": type,
+    "@description": description,
+  });
+}
+
+export function eventsForCustomer(customerId: string, limit = 10): CustomerEventRow[] {
+  return db
+    .prepare(`SELECT * FROM customer_events WHERE customer_id = @custId ORDER BY id DESC LIMIT @limit`)
+    .all({ "@custId": customerId, "@limit": limit }) as unknown as CustomerEventRow[];
+}
+
 // One-line plain-language description, used in handoff summaries and the dashboard.
 export function describeAction(a: Pick<CallActionRow, "type" | "details" | "scheduled_for" | "status">): string {
   const d = safeJson(a.details);

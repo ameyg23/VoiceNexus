@@ -59,7 +59,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-ink-950">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <span className="flex items-center gap-2">
             <LogoMark className="h-7 w-7" />
             <span className="text-lg font-bold text-white">{brand}</span>
@@ -77,7 +77,7 @@ export default function HomePage() {
 
       {/* Promo banner */}
       <div className="border-b border-amber-200 bg-amber-50">
-        <p className="mx-auto max-w-4xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
+        <p className="mx-auto max-w-7xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
           New customer offer: free professional installation on every plan, no exceptions.
         </p>
       </div>
@@ -85,7 +85,7 @@ export default function HomePage() {
       {/* Hero - generic, no "Welcome, {name}" personalization since the visitor isn't signed in. */}
       <section className="relative overflow-hidden bg-white">
         <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-50" aria-hidden="true" />
-        <div className="relative mx-auto grid max-w-4xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
+        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
           <div className="text-center lg:text-left">
             <span className="kicker text-brand-600">Springfield Fiber</span>
             <h1 className="mt-3 text-3xl font-bold leading-tight text-gray-900 sm:text-4xl">
@@ -112,7 +112,7 @@ export default function HomePage() {
 
       <MarketingSections />
 
-      <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         {/* Plans - "Choose this plan" sends an anonymous visitor to /signup?plan=<name>, which
             creates the account and purchases the plan in one step. */}
         <section id="plans" className="scroll-mt-6">
@@ -248,7 +248,7 @@ export default function HomePage() {
           commercial page). Routes to the shared /login, which already sends an employee to
           /admin/dashboard and a customer to /portal/account. */}
       <footer className="border-t border-gray-200 py-6">
-        <div className="mx-auto flex max-w-4xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} {brand}</p>
           <a href="/login" className="hover:text-brand-600">
             My account

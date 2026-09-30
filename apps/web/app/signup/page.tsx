@@ -26,6 +26,10 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Set only for the "email already exists" case - the page has no persistent sign-in link by
+  // design (user request), but leaving someone at a genuine dead end when they hit this specific
+  // error would be a real bug, not just missing decoration - so the fix is scoped to this one state.
+  const [emailExists, setEmailExists] = useState(false);
   const [loading, setLoading] = useState(false);
   const [purchased, setPurchased] = useState<{ ban: string; pin: string; planName: string } | null>(null);
 
@@ -46,14 +50,17 @@ function SignupForm() {
 
     setLoading(true);
     setError(null);
+    setEmailExists(false);
     try {
       await customerSignup(name.trim(), email.trim(), password);
       const result = await purchasePlan(planName);
       setPurchased(result);
     } catch (err) {
       const msg = String(err);
-      if (msg.includes("409")) setError("An account with that email already exists. Try signing in instead.");
-      else if (msg.includes("400")) setError("Please check your details. The password needs at least 8 characters.");
+      if (msg.includes("409")) {
+        setError("An account with that email already exists.");
+        setEmailExists(true);
+      } else if (msg.includes("400")) setError("Please check your details. The password needs at least 8 characters.");
       else setError("Couldn't create your account right now. Please try again.");
       setLoading(false);
     }
@@ -127,6 +134,15 @@ function SignupForm() {
         {error && (
           <p role="alert" className="rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
             {error}
+            {emailExists && (
+              <>
+                {" "}
+                <Link href="/login" className="font-medium underline hover:text-red-800">
+                  Sign in
+                </Link>{" "}
+                instead.
+              </>
+            )}
           </p>
         )}
         <SubmitButton loading={loading} loadingText="Setting up…">

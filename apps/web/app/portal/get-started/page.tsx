@@ -102,7 +102,7 @@ export default function GetStartedPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-ink-950">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <span className="flex items-center gap-2">
             <LogoMark className="h-7 w-7" />
             <span className="text-lg font-bold text-white">{brand}</span>
@@ -126,7 +126,7 @@ export default function GetStartedPage() {
       </header>
 
       {purchased ? (
-        <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
           <section className="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
             <p className="text-sm font-semibold uppercase tracking-wide text-green-700">You're all set</p>
             <h1 className="mt-2 text-2xl font-bold text-gray-900">Welcome to {purchased.planName}, {customer.name.split(" ")[0]}!</h1>
@@ -156,7 +156,7 @@ export default function GetStartedPage() {
               percentage - purchase-plan charges the plan's exact listed price, so a banner claiming
               a % off that never actually applies would be misleading, not just embellished. */}
           <div className="border-b border-amber-200 bg-amber-50">
-            <p className="mx-auto max-w-4xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
+            <p className="mx-auto max-w-7xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
               New customer offer: free professional installation on every plan, no exceptions.
             </p>
           </div>
@@ -166,10 +166,10 @@ export default function GetStartedPage() {
               by fidiumfiber.com's split hero-with-photo, not copied). Light background, not the dark
               nav's black (found and fixed Sep 30 - a solid-black hero directly under the equally-black
               header read as one oversized, undifferentiated black slab, flagged as unprofessional).
-              Also standardized on the same max-w-4xl the header and every section below already use. */}
+              Also standardized on the same max-w-7xl the header and every section below already use. */}
           <section className="relative overflow-hidden bg-white">
             <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-50" aria-hidden="true" />
-            <div className="relative mx-auto grid max-w-4xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
+            <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
               <div className="text-center lg:text-left">
                 <span className="kicker text-brand-600">Welcome, {customer.name.split(" ")[0]}</span>
                 <h1 className="mt-3 text-3xl font-bold leading-tight text-gray-900 sm:text-4xl">
@@ -196,7 +196,7 @@ export default function GetStartedPage() {
 
           <MarketingSections />
 
-          <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+          <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
             {/* Plans - residential and business are shown as two distinct groups (found and fixed
                 Sep 30: this used to be one flat list with no business-tier plans at all, so a
                 business prospect was quietly offered the same catalog as a home customer). Picking
@@ -335,7 +335,7 @@ export default function GetStartedPage() {
           need to advertise a staff login here). Routes to the shared /login, which already sends
           an employee to /admin/dashboard and a customer to /portal/account. */}
       <footer className="border-t border-gray-200 py-6">
-        <div className="mx-auto flex max-w-4xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} {brand}</p>
           <a href="/login" className="hover:text-brand-600">
             My account

@@ -6,7 +6,7 @@ import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
 import { PLAN_CATALOG, findPlan, isServiceAvailable, applyPlanChange, type CustomerRow } from "../lib/businessLogic.js";
-import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
+import { describeAction, safeJson, recordCustomerEvent, eventsForCustomer, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
 
@@ -178,10 +178,25 @@ customerAuthRouter.get("/activity", requireCustomerAuth, (req, res) => {
        FROM conversations c WHERE c.customer_id = @id ORDER BY c.start_time DESC LIMIT 5`
     )
     .all({ "@id": customerId });
+  // Web self-service actions (e.g. a portal plan switch) - no call behind them, so they live in a
+  // separate table (migration 008) rather than call_actions, which requires a conversation_id. IDs
+  // are negated so they can never collide with a call_actions id in the merged list's React keys.
+  const events = eventsForCustomer(customerId, 10).map((e) => ({
+    id: -e.id,
+    type: e.type as CallActionRow["type"],
+    status: "COMPLETED" as CallActionRow["status"],
+    scheduledFor: null,
+    window: null,
+    description: e.description,
+    createdAt: sqliteUtcToIso(e.created_at),
+  }));
+  const history = [...actions.filter((a) => a.status !== "SCHEDULED").map(view), ...events]
+    .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))
+    .slice(0, 10);
   const s = getSettings();
   res.json({
     upcoming: actions.filter((a) => a.status === "SCHEDULED").map(view),
-    history: actions.filter((a) => a.status !== "SCHEDULED").slice(0, 10).map(view),
+    history,
     recentCalls: calls,
     brandName: s.brandName,
     assistantName: s.assistantName,
@@ -217,7 +232,15 @@ customerAuthRouter.post("/switch-plan", requireCustomerAuth, (req, res) => {
   if (target.audience !== row.customer_type) return res.status(400).json({ error: "that plan isn't available for this account type" });
   if (target.name === row.plan_name) return res.status(400).json({ error: "already on this plan" });
 
+  const fromPlan = row.plan_name;
   const { newBalance, charged } = applyPlanChange(customerId, target.name);
+  recordCustomerEvent(
+    customerId,
+    "PLAN_CHANGE",
+    charged > 0
+      ? `Switched from ${fromPlan} to ${target.name} online ($${charged.toFixed(2)} added to balance)`
+      : `Switched from ${fromPlan} to ${target.name} online`
+  );
   res.json({ planName: target.name, charged, newBalance });
 });
 

@@ -688,6 +688,9 @@ async function scenarios() {
     const samePlan = await api("/api/auth/customer/switch-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 300" }) });
     check("can't 'switch' to the plan already on", samePlan.status === 400, JSON.stringify(samePlan.json));
 
+    // customer_events (migration 008) references customers - delete the switch-plan events it
+    // logged first, or this FK-violates the same way scenario 20's cleanup once did for conversations.
+    db.prepare(`DELETE FROM customer_events WHERE customer_id = (SELECT id FROM customers WHERE email = @e)`).run({ "@e": email });
     db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
   }
 }

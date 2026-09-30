@@ -10,7 +10,7 @@ export function MarketingSections() {
     <>
       {/* Stats band - styled after Fidium's colorful stat-strip treatment. */}
       <section className="bg-gradient-to-br from-brand-600 to-brand-800">
-        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
           {STATS.map((s) => (
             <div key={s.label} className="text-center">
               <p className="text-2xl font-bold text-white sm:text-3xl">{s.value}</p>
@@ -21,7 +21,7 @@ export function MarketingSections() {
       </section>
 
       {/* Why us */}
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <section>
           <span className="kicker">Why Springfield Fiber</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Everything you'd expect, nothing you wouldn't</h2>
@@ -43,7 +43,7 @@ export function MarketingSections() {
 
       {/* The Springfield Promise + fiber vs. regular comparison. */}
       <section className="bg-brand-50/60 py-12">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <span className="kicker">The Springfield Promise</span>
           <h2 className="mt-2 text-2xl font-bold text-gray-900">What we promise, every time.</h2>
           <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2">
@@ -81,7 +81,7 @@ export function MarketingSections() {
 
       {/* How people use it - a dark, plain-text band for visual contrast. */}
       <section className="bg-ink-950 py-12 text-white">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <h2 className="text-2xl font-bold">
             How people use <span className="text-brand-500">Springfield Fiber.</span>
           </h2>
@@ -97,7 +97,7 @@ export function MarketingSections() {
       </section>
 
       {/* Connected everywhere - a second real photo, feature-with-photo band (Fidium-style). */}
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="grid gap-0 sm:grid-cols-2 sm:items-center">
             <img
