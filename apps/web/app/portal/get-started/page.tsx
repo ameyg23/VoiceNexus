@@ -102,7 +102,7 @@ export default function GetStartedPage() {
             <p className="text-sm font-semibold uppercase tracking-wide text-green-700">You're all set</p>
             <h1 className="mt-2 text-2xl font-bold text-gray-900">Welcome to {purchased.planName}, {customer.name.split(" ")[0]}!</h1>
             <p className="mx-auto mt-3 max-w-md text-sm text-gray-600">
-              Save these — you'll need them any time you call our care line. You won't be shown this PIN again.
+              Save these. You'll need them any time you call our care line. You won't be shown this PIN again.
             </p>
             <div className="mx-auto mt-6 flex max-w-sm flex-col gap-3 sm:flex-row">
               <div className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3">

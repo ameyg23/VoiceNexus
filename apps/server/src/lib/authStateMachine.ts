@@ -350,7 +350,7 @@ function lookupBan(ctx: Ctx, ban: string): TurnResult {
     }
     return reply(
       ctx,
-      `I couldn't find an account with that number. You have ${BAN_MAX_ATTEMPTS - attempts} attempt${BAN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left — could you double-check it and try again?`
+      `I couldn't find an account with that number. You have ${BAN_MAX_ATTEMPTS - attempts} attempt${BAN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Could you double-check it and try again?`
     );
   }
   db.prepare(`UPDATE auth_sessions SET customer_id = @custId WHERE conversation_id = @cid`).run({ "@custId": customer.id, "@cid": ctx.conversationId });
@@ -380,7 +380,7 @@ function switchAccount(ctx: Ctx): TurnResult {
      WHERE conversation_id = @cid`
   ).run({ "@cid": ctx.conversationId });
   db.prepare(`UPDATE conversations SET customer_id = NULL, auth_status = 'PENDING', auth_method = NULL, ban_provided = NULL WHERE id = @cid`).run({ "@cid": ctx.conversationId });
-  return reply(ctx, "No problem — what's the other account number?");
+  return reply(ctx, "No problem, what's the other account number?");
 }
 
 async function classify(ctx: Ctx): Promise<Intent> {
@@ -485,7 +485,7 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
 
     case "SERVICE_AVAILABILITY":
       setSubflow(ctx.conversationId, { type: "EXISTING_SERVICE_ZIP" });
-      return reply(ctx, "Sure — what ZIP code would you like me to check?");
+      return reply(ctx, "Sure, what ZIP code would you like me to check?");
 
     case "AGENT_REQUEST":
       return agentRequested(ctx);
@@ -614,7 +614,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
   switch (sf.type) {
     case "CUSTOMER_KIND": {
       const kind = parseCustomerKind(u);
-      if (!kind) return reply(ctx, "Sorry, just to confirm — are you an existing Springfield Fiber customer, or a new customer?");
+      if (!kind) return reply(ctx, "Sorry, just to confirm: are you an existing Springfield Fiber customer, or a new customer?");
       // Natural conversation: a caller often answers both questions in one breath ("existing
       // residential customer") — check for that before falling back to asking separately.
       const accountType = parseAccountType(u);
@@ -628,7 +628,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       }
       if (accountType) {
         setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
-        return reply(ctx, "Great — what's the ZIP code where you'd like service?");
+        return reply(ctx, "Great, what's the ZIP code where you'd like service?");
       }
       setSubflow(ctx.conversationId, { type: "ACCOUNT_TYPE", forNew: true });
       return reply(ctx, "Welcome! Are you looking for residential or business service?");
@@ -644,7 +644,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
         return reply(ctx, "Thanks. Now, can you tell me your account number? It's the BAN on your bill.");
       }
       setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
-      return reply(ctx, "Great — what's the ZIP code where you'd like service?");
+      return reply(ctx, "Great, what's the ZIP code where you'd like service?");
     }
 
     case "NEW_CUSTOMER_ZIP": {
@@ -656,7 +656,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
         return reply(ctx, `I'm sorry, Springfield Fiber ${kindLabel} service isn't available in ${zip} yet. ${fillTemplate(ctx.settings.closePrompt, ctx.settings)}`, { endCall: true });
       }
       setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_OFFER", accountType: sf.accountType });
-      return reply(ctx, `Good news — Springfield Fiber ${kindLabel} service is available in ${zip}. I can transfer you to get signed up. Would you like me to do that?`);
+      return reply(ctx, `Good news, Springfield Fiber ${kindLabel} service is available in ${zip}. I can transfer you to get signed up. Would you like me to do that?`);
     }
 
     case "NEW_CUSTOMER_OFFER": {
@@ -677,7 +677,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       setSubflow(ctx.conversationId, null);
       return reply(
         ctx,
-        `${available ? `Good news — Springfield Fiber service is available in ${zip}.` : `I'm sorry, Springfield Fiber service isn't available in ${zip} yet.`} ${ANYTHING_ELSE}`
+        `${available ? `Good news, Springfield Fiber service is available in ${zip}.` : `I'm sorry, Springfield Fiber service isn't available in ${zip} yet.`} ${ANYTHING_ELSE}`
       );
     }
 
@@ -686,7 +686,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       if (answer === "YES") return lookupBan(ctx, sf.ban);
       if (answer === "NO") {
         setSubflow(ctx.conversationId, null);
-        return reply(ctx, "Sorry about that — could you say your account number again?");
+        return reply(ctx, "Sorry about that. Could you say your account number again?");
       }
       return reply(ctx, `Sorry, is your account number ${spokenDigits(sf.ban)}? Please say yes or no.`);
     }
@@ -697,7 +697,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       if (answer === "YES") return verifyPinTurn(ctx, customer, sf.pin);
       if (answer === "NO") {
         setSubflow(ctx.conversationId, null);
-        return reply(ctx, "Sorry about that — could you say your PIN again?");
+        return reply(ctx, "Sorry about that. Could you say your PIN again?");
       }
       return reply(ctx, `Sorry, is your PIN ${spokenDigits(sf.pin)}? Please say yes or no.`);
     }

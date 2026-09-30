@@ -203,7 +203,7 @@ twilioRouter.post("/gather", validateTwilioSignature, async (req, res) => {
       return sendTwiml(res, twiml);
     }
     // Silence again right after that check-in — genuinely done.
-    const bye = "Looks like you're all set. Let me know if there's anything else I can help with — thank you, and have a nice day!";
+    const bye = "Looks like you're all set. Thank you, and have a nice day!";
     appendTurn(conversationId, "AI", bye);
     endConversation(conversationId);
     clearSilenceStreak(callSid);
@@ -284,7 +284,7 @@ twilioRouter.post("/client-voice", validateTwilioSignature, (req, res) => {
 twilioRouter.get("/token", requireEmployeeAuth, (req, res) => {
   const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_TWIML_APP_SID } = process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWILIO_TWIML_APP_SID) {
-    return res.status(503).json({ error: "Voice SDK not configured — run apps/server/scripts/twilio-setup.ts first" });
+    return res.status(503).json({ error: "Voice SDK not configured. Run apps/server/scripts/twilio-setup.ts first" });
   }
 
   const { AccessToken } = twilio.jwt;
@@ -303,7 +303,7 @@ twilioRouter.get("/token", requireEmployeeAuth, (req, res) => {
 twilioRouter.get("/customer-token", requireCustomerAuth, (req, res) => {
   const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_TWIML_APP_SID } = process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWILIO_TWIML_APP_SID) {
-    return res.status(503).json({ error: "Voice SDK not configured — run apps/server/scripts/twilio-setup.ts first" });
+    return res.status(503).json({ error: "Voice SDK not configured. Run apps/server/scripts/twilio-setup.ts first" });
   }
 
   const { AccessToken } = twilio.jwt;

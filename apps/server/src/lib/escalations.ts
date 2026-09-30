@@ -52,7 +52,7 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
   if (verified) attempted.push(`Identity verified by ${c.auth_method === "PIN" ? "PIN" : c.auth_method === "SMS_OTP" ? "SMS one-time code" : "email one-time code"}`);
   else if (c.pin_attempts) attempted.push(`${c.pin_attempts} incorrect PIN attempt(s)`);
   const otps = db.prepare(`SELECT method, status FROM otps WHERE conversation_id = @cid ORDER BY id`).all({ "@cid": conversationId }) as { method: string; status: string }[];
-  if (otps.length) attempted.push(`Sent ${otps.length} one-time code(s) by ${otps[0].method.toLowerCase()} — last ${otps[otps.length - 1].status.toLowerCase()}`);
+  if (otps.length) attempted.push(`Sent ${otps.length} one-time code(s) by ${otps[0].method.toLowerCase()}, last ${otps[otps.length - 1].status.toLowerCase()}`);
   for (const a of actionsForConversation(conversationId)) attempted.push(describeAction(a));
 
   const lastWords = db
@@ -62,7 +62,7 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
   const who = c.customer_name ? `${c.customer_name}${c.ban_provided ? ` (${c.ban_provided})` : ""}` : `Unidentified caller from ${c.ani}`;
   const summary = [
     `${REASON_TEXT[reason]}.`,
-    `Caller: ${who} — ${verified ? "identity VERIFIED" : "identity NOT verified; re-verify before sharing account details"}.`,
+    `Caller: ${who}. ${verified ? "Identity VERIFIED" : "Identity NOT verified; re-verify before sharing account details"}.`,
     `Wants: ${intentText(c.detected_intent as Intent | null)}.`,
     lastWords.length ? `Last said: "${lastWords.reverse().map((w) => w.text).join(" / ")}".` : null,
   ]

@@ -108,7 +108,7 @@ customerAuthRouter.post("/purchase-plan", requireCustomerAuth, (req, res) => {
   const row = db.prepare(`SELECT * FROM customers WHERE id = @id`).get({ "@id": customerId }) as CustomerRow | undefined;
   if (!row) return res.status(401).json({ error: "not authenticated" });
   if (row.account_status !== "PROSPECT") {
-    return res.status(400).json({ error: "this account already has an active plan — call customer care to change it" });
+    return res.status(400).json({ error: "this account already has an active plan. Call customer care to change it" });
   }
 
   const plan = findPlan(parsed.data.planName);
