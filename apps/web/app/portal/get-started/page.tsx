@@ -13,82 +13,22 @@ import {
   type CustomerActivity,
   type PlanInfo,
 } from "../../../lib/api";
+import { PLAN_BADGES, GET_STARTED_FAQS } from "../../../lib/marketingContent";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
-import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon, WaveformIcon, CheckIcon, UsersIcon, GearIcon, LockIcon, ArrowRightIcon } from "../../../components/icons";
+import { MarketingSections } from "../../../components/MarketingSections";
+import { FaqAccordion } from "../../../components/FaqAccordion";
+import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon } from "../../../components/icons";
 import { formatMoney } from "../../../lib/format";
-
-const FEATURES = [
-  { icon: WaveformIcon, title: "Speeds up to 1 Gig", body: "Fiber-fast downloads and uploads for every device, at home or in the office, no slowdowns at peak hours." },
-  { icon: HeadsetIcon, title: "24/7 automated support", body: "Call any time, day or night, and get help in seconds - a live agent is always one ask away." },
-  { icon: CheckIcon, title: "No contracts, no surprises", body: "Simple monthly pricing, cancel any time. No hidden fees, no early-termination charges." },
-  { icon: UsersIcon, title: "Local technicians", body: "Need a hand at home or on-site at your business? We'll get someone out to you, usually within the week." },
-  { icon: GearIcon, title: "Free professional installation", body: "We set up and test your connection so it works the way it should from day one." },
-  { icon: LockIcon, title: "A connection you can count on", body: "Dedicated fiber and a proactively monitored network, built to stay reliable when it matters most." },
-];
-
-// Illustrative trust-signal numbers for the demo (Springfield Fiber is a fictional company - not
-// pulled from any real filing), styled after the quick stats strip on fidiumfiber.com.
-const STATS = [
-  { value: "50K+", label: "Homes & businesses connected" },
-  { value: "1 Gig", label: "Max download speed" },
-  { value: "24/7", label: "Always-on support" },
-  { value: "99.9%", label: "Network uptime" },
-];
-
-// A dark, plain-text band (no icons/cards) for visual variety against the light sections around it -
-// loosely mirrors fidiumfiber.com's "How people use Fidium Fiber at home" band, adapted to cover
-// business use too since this page now serves both audiences.
-const USE_CASES = [
-  { title: "Gaming without lag", body: "Low latency and consistent speeds keep gameplay smooth, even during peak hours." },
-  { title: "Work and school at the same time", body: "Fast uploads make video calls clearer and file sharing quicker, even with everyone online at once." },
-  { title: "Streaming everywhere", body: "Stream in 4K across multiple devices without buffering or slowdowns." },
-  { title: "Always-on for business", body: "A static IP and priority support keep point-of-sale, calls, and cloud tools running without a hitch." },
-];
-
-// Frontend-only marketing labels, not part of PLAN_CATALOG (the phone AI's plan list stays
-// unlabeled - "Most Popular" means nothing read aloud). Picked on real value: the mid-tier plan
-// balances speed/price, the top tier is the biggest speed jump per dollar.
-const PLAN_BADGES: Record<string, string> = {
-  "Fiber 500": "Most Popular",
-  "Fiber 1000": "Best Value",
-  "Business 500": "Most Popular",
-  "Business 1000": "Best Value",
-};
-
-// Customer promises - what we commit to on every account, grounded in real features elsewhere on
-// this page (installation, wifi setup, 24/7 support, no contracts, live-agent access), not new claims.
-const PROMISES = [
-  { title: "Every install, tested and confirmed", body: "We confirm your connection at setup so you know you're getting the speed you're paying for." },
-  { title: "Whole-home wifi, set up for you", body: "We test your wifi coverage at install so there are no dead zones from day one." },
-  { title: "24/7 support, real help when you need it", body: "Automated help around the clock, with a live agent always one ask away." },
-  { title: "No contracts, ever", body: "Month-to-month pricing. Cancel any time, no early-termination fees." },
-  { title: "A network we watch around the clock", body: "Proactively monitored to catch issues before they reach you." },
-  { title: "Ask for a person, any time", body: "Say the word during any call and you're transferred right away, no waiting in a queue." },
-];
-
-// Standard fiber-vs-cable/DSL marketing points (real, well-known technical differences - fiber is
-// genuinely not shared with the neighborhood and isn't weather-sensitive the way copper/coax is).
-const COMPARISON = [
-  { label: "Upload speeds", fiber: "As fast as downloads", regular: "Often much slower" },
-  { label: "Peak-hour slowdowns", fiber: "None, your line isn't shared", regular: "Common, shared with the neighborhood" },
-  { label: "Affected by weather", fiber: "No", regular: "Can drop in storms" },
-  { label: "Contract required", fiber: "No, cancel any time", regular: "Often 1-2 years" },
-];
-
-const FAQS: { q: string; a: string }[] = [
-  { q: "Is Springfield Fiber available in my area?", a: "In most covered ZIP codes, yes. Use the ZIP checker above for an instant answer, or call the number below and our assistant can check it for you." },
-  { q: "Are there contracts or data caps?", a: "No. Every plan is month-to-month with unlimited data. Cancel any time, no early-termination fees." },
-  { q: "What's included when I sign up?", a: "Free professional installation, a wifi router, and 24/7 automated support that can connect you to a live agent any time you need one." },
-  { q: "How is a business plan different?", a: "Business plans add a static IP and priority support on the same fiber network, at business-tier pricing." },
-  { q: "Can I speak to a live person?", a: "Yes, any time. Just ask for an agent during your call and you'll be transferred with a summary of what you've already told us, so you don't have to repeat yourself." },
-];
 
 // Landing page for a customer who has a web login but hasn't bought a plan yet (account_status =
 // PROSPECT) - a real customer (has an active plan) is redirected straight past this to
 // /portal/account instead. Picking a plan here is what actually makes them a customer: it assigns a
 // real BAN and a phone PIN (shown once, immediately below), same simulated-purchase pattern as
-// MAKE_PAYMENT on a call - no real payment gateway exists in this POC.
+// MAKE_PAYMENT on a call - no real payment gateway exists in this POC. This is the *authenticated*
+// counterpart of the public homepage (/) - same marketing content (MarketingSections), but plans
+// purchase directly here since the visitor already has a session, instead of the public page's
+// "pick a plan -> create an account -> purchase" flow through /signup.
 export default function GetStartedPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerAccount | null>(null);
@@ -99,7 +39,6 @@ export default function GetStartedPage() {
   const [purchased, setPurchased] = useState<{ ban: string; pin: string; planName: string } | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [planAudience, setPlanAudience] = useState<"RESIDENTIAL" | "BUSINESS">("RESIDENTIAL");
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [zipInput, setZipInput] = useState("");
   const [checkingZip, setCheckingZip] = useState(false);
   const [zipResult, setZipResult] = useState<{ zip: string; available: boolean } | null>(null);
@@ -212,11 +151,10 @@ export default function GetStartedPage() {
       ) : (
         <>
           {/* Promo banner - illustrative marketing copy, same "clearly a demo embellishment" posture
-              already documented on STATS below (not pulled from any real filing). Deliberately tied
-              to a feature that's actually true (free installation, already in FEATURES/PROMISES)
-              rather than a fabricated discount percentage - purchase-plan charges the plan's exact
-              listed price, so a banner claiming a % off that never actually applies would be
-              misleading, not just embellished. */}
+              already documented on STATS (not pulled from any real filing). Deliberately tied to a
+              feature that's actually true (free installation) rather than a fabricated discount
+              percentage - purchase-plan charges the plan's exact listed price, so a banner claiming
+              a % off that never actually applies would be misleading, not just embellished. */}
           <div className="border-b border-amber-200 bg-amber-50">
             <p className="mx-auto max-w-4xl px-4 py-2.5 text-center text-sm font-medium text-amber-900 sm:px-6">
               New customer offer: free professional installation on every plan, no exceptions.
@@ -228,9 +166,7 @@ export default function GetStartedPage() {
               by fidiumfiber.com's split hero-with-photo, not copied). Light background, not the dark
               nav's black (found and fixed Sep 30 - a solid-black hero directly under the equally-black
               header read as one oversized, undifferentiated black slab, flagged as unprofessional).
-              Also standardized on the same max-w-4xl the header and every section below already use -
-              this used to be max-w-6xl (and the stats band below was max-w-5xl), so the hero and stats
-              content never actually lined up with the header logo or the page content under them. */}
+              Also standardized on the same max-w-4xl the header and every section below already use. */}
           <section className="relative overflow-hidden bg-white">
             <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-50" aria-hidden="true" />
             <div className="relative mx-auto grid max-w-4xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
@@ -258,133 +194,14 @@ export default function GetStartedPage() {
             </div>
           </section>
 
-          {/* Stats band - quick trust signals, styled after Fidium's colorful stat-strip treatment
-              rather than a plain bordered band, for more visual variety on the page. */}
-          <section className="bg-gradient-to-br from-brand-600 to-brand-800">
-            <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
-              {STATS.map((s) => (
-                <div key={s.label} className="text-center">
-                  <p className="text-2xl font-bold text-white sm:text-3xl">{s.value}</p>
-                  <p className="mt-1 text-xs text-white/80 sm:text-sm">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-            {/* Why us */}
-            <section>
-              <span className="kicker">Why Springfield Fiber</span>
-              <h2 className="mt-2 text-lg font-bold text-gray-900">Everything you'd expect, nothing you wouldn't</h2>
-              <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {FEATURES.map(({ icon: Icon, title, body }) => (
-                  <div key={title} className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="font-semibold text-gray-900">{title}</p>
-                      <p className="mt-1 text-sm text-gray-500">{body}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          {/* The Springfield Promise + fiber vs. regular comparison - customer promises and how we're
-              different from traditional cable/DSL (user request, Sep 30: "Show customer promises and
-              the difference between regular fiber and Springfield fiber. We can market ourselves
-              there"). Soft-tint full-bleed band, a third visual treatment alongside the white cards
-              and dark band already on the page. */}
-          <section className="bg-brand-50/60 py-12">
-            <div className="mx-auto max-w-4xl px-4 sm:px-6">
-              <span className="kicker">The Springfield Promise</span>
-              <h2 className="mt-2 text-2xl font-bold text-gray-900">What we promise, every time.</h2>
-              <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2">
-                {PROMISES.map((p) => (
-                  <div key={p.title} className="flex items-start gap-3">
-                    <CheckIcon className="mt-1 h-4 w-4 shrink-0 text-brand-600" />
-                    <div>
-                      <p className="font-semibold text-gray-900">{p.title}</p>
-                      <p className="mt-1 text-sm text-gray-600">{p.body}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-12">
-                <span className="kicker">Fiber vs. traditional internet</span>
-                <h2 className="mt-2 text-2xl font-bold text-gray-900">Not all internet is built the same.</h2>
-                <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <div className="grid grid-cols-3 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <div className="px-3 py-3 sm:px-4"></div>
-                    <div className="px-3 py-3 text-brand-600 sm:px-4">Springfield Fiber</div>
-                    <div className="px-3 py-3 sm:px-4">Cable/DSL</div>
-                  </div>
-                  {COMPARISON.map((row, i) => (
-                    <div key={row.label} className={`grid grid-cols-3 text-xs sm:text-sm ${i !== COMPARISON.length - 1 ? "border-b border-gray-100" : ""}`}>
-                      <div className="px-3 py-3 font-medium text-gray-900 sm:px-4">{row.label}</div>
-                      <div className="px-3 py-3 text-gray-700 sm:px-4">{row.fiber}</div>
-                      <div className="px-3 py-3 text-gray-500 sm:px-4">{row.regular}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* How people use it - a dark, plain-text band for visual contrast against the light
-              sections around it (Fidium-style "how people use it at home" pattern, adapted to cover
-              business use too). */}
-          <section className="bg-ink-950 py-12 text-white">
-            <div className="mx-auto max-w-4xl px-4 sm:px-6">
-              <h2 className="text-2xl font-bold">
-                How people use <span className="text-brand-500">Springfield Fiber.</span>
-              </h2>
-              <div className="mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-                {USE_CASES.map((u) => (
-                  <div key={u.title}>
-                    <p className="font-semibold text-white">{u.title}</p>
-                    <p className="mt-1.5 text-sm text-gray-400">{u.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+          <MarketingSections />
 
           <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-            {/* Connected everywhere - a second real photo, feature-with-photo band (Fidium-style) */}
-            <section className="mt-12 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="grid gap-0 sm:grid-cols-2 sm:items-center">
-                <img
-                  src="https://images.unsplash.com/photo-1620862657788-a403bdf6dd63?w=900&q=80&auto=format&fit=crop"
-                  alt="A woman relaxing on her couch, working on a laptop over wifi at home"
-                  className="h-56 w-full object-cover sm:h-full"
-                />
-                <div className="p-6 sm:p-8">
-                  <span className="kicker">Wifi built to keep up</span>
-                  <h2 className="mt-2 text-lg font-bold text-gray-900">Work, stream, and connect without the dead zones</h2>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Reliable coverage from wall to wall, whether it's a home office, a full house, or a small business floor.
-                  </p>
-                  <ul className="mt-4 space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start gap-2">
-                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> Free wifi router included with every plan
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> Set up the same day service is installed
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </section>
-
             {/* Plans - residential and business are shown as two distinct groups (found and fixed
                 Sep 30: this used to be one flat list with no business-tier plans at all, so a
                 business prospect was quietly offered the same catalog as a home customer). Picking
                 a business plan here is also what tags the new account BUSINESS server-side. */}
-            <section id="plans" className="mt-12 scroll-mt-6">
+            <section id="plans" className="scroll-mt-6">
               <span className="kicker">Plans</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Choose a plan to get started</h2>
               <p className="mt-2 max-w-2xl text-sm text-gray-600">
@@ -407,12 +224,8 @@ export default function GetStartedPage() {
                 ))}
               </div>
 
-              {/* Offer callouts, one per audience (user follow-up, Sep 30: "add those 5 discount and
-                  offer sections as well... just mean more promo banners like Fidium's"). Both tied to
-                  real, already-true pricing/inclusions, same posture as the top promo banner -
-                  bundle pricing is a genuine $5/mo saving versus buying the parts separately
-                  (Fiber 500 $70 + Cable Basic $45 = $115 vs. Fiber 500 + TV at $110), and the
-                  business line already includes a static IP/priority support at no extra fee. */}
+              {/* Offer callouts, one per audience - both tied to real, already-true pricing/inclusions,
+                  same posture as the top promo banner. */}
               {planAudience === "RESIDENTIAL" ? (
                 <p className="mt-4 rounded-lg bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
                   Bundle and save: add TV to Fiber 500 or Fiber 1000 and pay $5/mo less than buying internet and TV separately.
@@ -457,10 +270,7 @@ export default function GetStartedPage() {
 
             {/* Check availability - a real lookup against the same service_areas table the phone
                 flow's ZIP questions use (businessLogic.ts::isServiceAvailable), modeled on
-                fidiumfiber.com's address checker (user request, Sep 30: "put our availability into
-                some areas... when they enter their area, we can answer them from there itself").
-                Scoped to whichever audience is selected above, so a "for your business" visitor
-                checking their ZIP gets a business-coverage answer, not a residential one. */}
+                fidiumfiber.com's address checker. Scoped to whichever audience is selected above. */}
             <section className="mt-12 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
               <span className="kicker">Ready to see if we're in your area?</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Check availability by ZIP code</h2>
@@ -497,23 +307,8 @@ export default function GetStartedPage() {
             <section className="mt-12">
               <span className="kicker">Have questions?</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">We've got answers</h2>
-              <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                {FAQS.map((item, i) => {
-                  const open = openFaq === i;
-                  return (
-                    <div key={item.q}>
-                      <button
-                        onClick={() => setOpenFaq(open ? null : i)}
-                        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-gray-900 hover:bg-gray-50"
-                        aria-expanded={open}
-                      >
-                        {item.q}
-                        <ArrowRightIcon className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
-                      </button>
-                      {open && <p className="px-5 pb-4 text-sm leading-relaxed text-gray-600">{item.a}</p>}
-                    </div>
-                  );
-                })}
+              <div className="mt-4">
+                <FaqAccordion faqs={GET_STARTED_FAQS} />
               </div>
             </section>
 
@@ -537,11 +332,7 @@ export default function GetStartedPage() {
       )}
 
       {/* Utility footer - "My account" / "Employee login" links, both to the shared /login page,
-          which already routes a customer to /portal/account and an employee to /admin/dashboard
-          (user request, Sep 30: "From the commercial page, if we go to My Account, users can get
-          into their account, and admins can get into their account at the backend"). No new pages
-          or audience picker needed - /login already does exactly this, this just makes it reachable
-          from here too, the way fidiumfiber.com's own nav always carries a "My account" link. */}
+          which already routes a customer to /portal/account and an employee to /admin/dashboard. */}
       <footer className="border-t border-gray-200 py-6">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-2 px-4 text-xs text-gray-500 sm:flex-row sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} {brand}</p>

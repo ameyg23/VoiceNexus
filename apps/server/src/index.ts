@@ -16,6 +16,7 @@ import { customersRouter } from "./routes/customers.js";
 import { twilioRouter } from "./routes/twilio.js";
 import { settingsRouter, escalationsRouter, actionsRouter } from "./routes/operations.js";
 import { getSettings } from "./lib/settings.js";
+import { PLAN_CATALOG, isServiceAvailable } from "./lib/businessLogic.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -57,6 +58,26 @@ app.get("/api/demo/config", (_req, res) => {
     recordingEnabled: s.recordingEnabled,
     careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null,
   });
+});
+
+// GET /api/demo/plans — the same PLAN_CATALOG the phone AI and the authenticated get-started/account
+// pages use, exposed publicly for the public marketing homepage (`/`, user request, Sep 30: "when we
+// open the website we should see the commercial company page"), where a visitor isn't signed in yet
+// and can't hit the customer-auth-gated /api/auth/customer/plans. No sensitive data — same catalog a
+// call would recite anyway.
+app.get("/api/demo/plans", (_req, res) => {
+  res.json({ plans: PLAN_CATALOG });
+});
+
+// GET /api/demo/service-availability?zip=&accountType= — public equivalent of
+// /api/auth/customer/service-availability, same service_areas lookup, for the public homepage's
+// availability checker. A ZIP code + coverage flag isn't sensitive; no auth needed to ask it, same as
+// asking over the phone before ever giving an account number.
+app.get("/api/demo/service-availability", (req, res) => {
+  const zip = String(req.query.zip ?? "").trim();
+  const accountType = req.query.accountType === "BUSINESS" ? "BUSINESS" : "RESIDENTIAL";
+  if (!/^\d{5}$/.test(zip)) return res.status(400).json({ error: "enter a 5-digit ZIP code" });
+  res.json({ zip, accountType, available: isServiceAvailable(zip, accountType) });
 });
 
 app.get("/api/health", (_req, res) => {

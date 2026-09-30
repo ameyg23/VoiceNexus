@@ -14,16 +14,10 @@ import {
 import { Badge } from "../../../components/Badge";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
+import { FaqAccordion } from "../../../components/FaqAccordion";
+import { PLAN_BADGES } from "../../../lib/marketingContent";
 import { LogoMark, PhoneIcon, CalendarIcon, CheckIcon, LogoutIcon, HeadsetIcon, ArrowRightIcon } from "../../../components/icons";
 import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../lib/format";
-
-// Same marketing labels shown on /portal/get-started (frontend-only, not part of PLAN_CATALOG).
-const PLAN_BADGES: Record<string, string> = {
-  "Fiber 500": "Most Popular",
-  "Fiber 1000": "Best Value",
-  "Business 500": "Most Popular",
-  "Business 1000": "Best Value",
-};
 
 const FAQS: { q: string; a: string }[] = [
   {
@@ -52,7 +46,6 @@ export default function PortalAccountPage() {
   const [customer, setCustomer] = useState<CustomerAccount | null>(null);
   const [activity, setActivity] = useState<CustomerActivity | null>(null);
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   useEffect(() => {
@@ -271,23 +264,8 @@ export default function PortalAccountPage() {
             </p>
           </div>
 
-          <div className="mt-6 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            {FAQS.map((item, i) => {
-              const open = openFaq === i;
-              return (
-                <div key={item.q}>
-                  <button
-                    onClick={() => setOpenFaq(open ? null : i)}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-gray-900 hover:bg-gray-50"
-                    aria-expanded={open}
-                  >
-                    {item.q}
-                    <ArrowRightIcon className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
-                  </button>
-                  {open && <p className="px-5 pb-4 text-sm leading-relaxed text-gray-600">{item.a}</p>}
-                </div>
-              );
-            })}
+          <div className="mt-6">
+            <FaqAccordion faqs={FAQS} />
           </div>
         </section>
       </main>

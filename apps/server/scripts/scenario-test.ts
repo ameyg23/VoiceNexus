@@ -622,6 +622,38 @@ async function scenarios() {
     db.prepare(`DELETE FROM conversations WHERE id = ?`).run(call.id);
     db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
   }
+
+  console.log("\n23. Public homepage endpoints - no session needed, and signup+purchase in one step (Sep 30)");
+  {
+    const plansRes = await fetch(`${BASE}/api/demo/plans`);
+    const plansJson = await plansRes.json();
+    check("GET /api/demo/plans needs no auth and returns the full catalog", plansRes.status === 200 && plansJson.plans.length === 10, JSON.stringify(plansJson).slice(0, 200));
+
+    const availRes = await fetch(`${BASE}/api/demo/service-availability?zip=62701&accountType=RESIDENTIAL`);
+    const availJson = await availRes.json();
+    check("GET /api/demo/service-availability needs no auth and matches the phone flow's own lookup", availRes.status === 200 && availJson.available === true, JSON.stringify(availJson));
+
+    // The public homepage's "click a plan -> /signup?plan=X -> account created and purchased in one
+    // step" flow (user request, Sep 30: "instead of a sign up page, once they click on any
+    // plans/packages/services while purchasing it we will get their details").
+    const email = `homepage-buyer-${Date.now()}@example.com`;
+    const signupRes = await fetch(`${BASE}/api/auth/customer/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Homepage Buyer", email, password: "homepage-test-pass" }),
+    });
+    const cookie = (signupRes.headers.getSetCookie().find((c) => c.startsWith("vn_customer_session=")) ?? "").split(";")[0];
+    const purchase = await fetch(`${BASE}/api/auth/customer/purchase-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify({ planName: "Fiber 300" }),
+    });
+    const purchaseJson = await purchase.json();
+    check("signup immediately followed by purchase-plan (same session) activates the account", purchase.status === 201 && /^BAN\d+$/.test(purchaseJson.ban), JSON.stringify(purchaseJson));
+    check("customer_type set from the plan bought", one(`SELECT customer_type t FROM customers WHERE email = ?`, email)!.t === "RESIDENTIAL");
+
+    db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
+  }
 }
 
 try {

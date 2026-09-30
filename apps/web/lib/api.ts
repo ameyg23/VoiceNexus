@@ -67,6 +67,20 @@ export async function fetchDemoCustomers(): Promise<DemoCustomer[]> {
   return data.customers;
 }
 
+// Public (no session needed) equivalents of the customer-auth-gated /plans and
+// /service-availability endpoints below, for the public homepage (/) where a visitor isn't signed
+// in yet. Same PLAN_CATALOG / service_areas data either way - see apps/server/src/index.ts.
+export async function fetchPublicPlans(): Promise<PlanInfo[]> {
+  const res = await fetch(`${API_URL}/api/demo/plans`);
+  const data = await jsonOrThrow<{ plans: PlanInfo[] }>(res);
+  return data.plans;
+}
+
+export async function checkPublicAvailability(zip: string, accountType: "RESIDENTIAL" | "BUSINESS") {
+  const res = await fetch(`${API_URL}/api/demo/service-availability?zip=${encodeURIComponent(zip)}&accountType=${accountType}`);
+  return jsonOrThrow<{ zip: string; accountType: string; available: boolean }>(res);
+}
+
 export async function startCall(demoPhoneNumber: string): Promise<StartCallResponse> {
   const res = await fetch(`${API_URL}/api/calls/start`, {
     method: "POST",

@@ -9,11 +9,11 @@ const nextConfig = {
   // A stray lockfile in the user's home directory (outside this repo) makes Next.js guess the
   // wrong monorepo root — pin it explicitly to silence the warning.
   outputFileTracingRoot: path.resolve(__dirname, "../.."),
-  // One sign-in for everyone (the server decides employee vs customer and redirects accordingly —
-  // /admin/dashboard or /portal/account). No public marketing site: "/" is just the sign-in page.
+  // "/" is a real public page again (app/page.tsx, Sep 30 - see its own top comment for why this is
+  // the third time this exact structure has been tried this week). One shared sign-in for everyone
+  // still lives at /login (the server decides employee vs customer and redirects accordingly).
   async redirects() {
     return [
-      { source: "/", destination: "/login", permanent: false },
       { source: "/admin/login", destination: "/login", permanent: false },
       { source: "/portal/login", destination: "/login", permanent: false },
       { source: "/admin/signup", destination: "/signup", permanent: false },
