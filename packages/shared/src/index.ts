@@ -151,7 +151,8 @@ export type EscalationReason =
   | "CALLER_REQUESTED"
   | "UNRESOLVED_REQUEST"
   | "BAN_LOOKUP_FAILED"
-  | "NEW_CUSTOMER_ENROLLMENT";
+  | "NEW_CUSTOMER_ENROLLMENT"
+  | "CREDENTIALS_FORGOTTEN";
 export type EscalationStatus = "WAITING" | "ACCEPTED" | "RESOLVED";
 
 export type Language = "en-US" | "es-US" | "hi-IN";

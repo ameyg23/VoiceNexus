@@ -64,13 +64,23 @@ export default function HomePage() {
             <LogoMark className="h-7 w-7" />
             <span className="text-lg font-bold text-white">{brand}</span>
           </span>
-          <div className="flex items-center gap-3">
-            <a href="/login" className="text-sm font-medium text-gray-300 hover:text-white">
-              My account
-            </a>
-            <a href="#plans" className="btn btn-primary px-4 py-1.5 text-sm">
-              Get started
-            </a>
+          <div className="flex items-center gap-8">
+            <nav className="hidden items-center gap-6 sm:flex">
+              <a href="#plans" className="text-sm font-medium text-gray-300 hover:text-white">
+                Plans
+              </a>
+              <a href="#support" className="text-sm font-medium text-gray-300 hover:text-white">
+                Support
+              </a>
+            </nav>
+            <div className="flex items-center gap-3">
+              <a href="/login" className="text-sm font-medium text-gray-300 hover:text-white">
+                My account
+              </a>
+              <a href="#plans" className="btn btn-primary px-4 py-1.5 text-sm">
+                Get started
+              </a>
+            </div>
           </div>
         </div>
       </header>
@@ -223,7 +233,7 @@ export default function HomePage() {
 
         {/* Support - a plain number + tel: link, not the interactive browser-calling widget (that
             needs a signed-in customer session, which an anonymous visitor doesn't have yet). */}
-        <section className="mt-12">
+        <section id="support" className="mt-12 scroll-mt-6">
           <span className="kicker">Prefer to talk it through?</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Call customer support</h2>
           <div className="mt-4 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8">

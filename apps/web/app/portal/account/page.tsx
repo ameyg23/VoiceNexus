@@ -102,7 +102,7 @@ export default function PortalAccountPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-ink-950">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <span className="flex items-center gap-2">
             <LogoMark className="h-7 w-7" />
             <span className="text-lg font-bold text-white">{brand}</span>
@@ -130,7 +130,7 @@ export default function PortalAccountPage() {
         <div className="h-[3px] bg-brand-600" />
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <span className="kicker">Your account</span>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Hi, {customer.name.split(" ")[0]}</h1>
         <p className="mt-1 text-sm text-gray-500">

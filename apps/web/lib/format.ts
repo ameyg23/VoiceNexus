@@ -78,6 +78,7 @@ export const ESCALATION_REASON_LABELS: Record<EscalationReason, string> = {
   UNRESOLVED_REQUEST: "Couldn't resolve in-flow",
   BAN_LOOKUP_FAILED: "Account number not found (3 attempts)",
   NEW_CUSTOMER_ENROLLMENT: "New customer sign-up",
+  CREDENTIALS_FORGOTTEN: "Couldn't recall account number or PIN",
 };
 
 export const ESCALATION_STATUS_TONES: Record<EscalationStatus, BadgeTone> = {

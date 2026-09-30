@@ -107,12 +107,22 @@ export default function GetStartedPage() {
             <LogoMark className="h-7 w-7" />
             <span className="text-lg font-bold text-white">{brand}</span>
           </span>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-gray-300 sm:inline">{customer.name}</span>
-            <button onClick={() => setConfirmingLogout(true)} className="btn whitespace-nowrap border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10">
-              <LogoutIcon className="h-4 w-4" />
-              Sign out
-            </button>
+          <div className="flex items-center gap-8">
+            <nav className="hidden items-center gap-6 sm:flex">
+              <a href="#plans" className="text-sm font-medium text-gray-300 hover:text-white">
+                Plans
+              </a>
+              <a href="#support" className="text-sm font-medium text-gray-300 hover:text-white">
+                Support
+              </a>
+            </nav>
+            <div className="flex items-center gap-3">
+              <span className="hidden text-sm text-gray-300 sm:inline">{customer.name}</span>
+              <button onClick={() => setConfirmingLogout(true)} className="btn whitespace-nowrap border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10">
+                <LogoutIcon className="h-4 w-4" />
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
         <ConfirmDialog
@@ -313,7 +323,7 @@ export default function GetStartedPage() {
             </section>
 
             {/* Support */}
-            <section className="mt-12">
+            <section id="support" className="mt-12 scroll-mt-6">
               <span className="kicker">Prefer to talk it through?</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Call customer support</h2>
               <div className="mt-4 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8">

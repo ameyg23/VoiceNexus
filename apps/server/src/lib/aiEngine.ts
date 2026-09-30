@@ -187,6 +187,23 @@ export async function classifyYesNoAI(utterance: string, question: string): Prom
   return result?.answer === "YES" || result?.answer === "NO" ? result.answer : null;
 }
 
+// Whether a caller's reply means they can't produce their account number or PIN (as opposed to just
+// mishearing the question, going quiet, or saying something unrelated) - phrased as a real judgment
+// call rather than a keyword match, since "I don't have it on me", "it's not coming to mind right
+// now", "my partner set that up, I never knew it" etc. all mean the same thing without ever using the
+// words a regex would look for.
+export async function classifyForgotCredentialsAI(utterance: string): Promise<boolean | null> {
+  const result = await callGemini(
+    `A phone caller was just asked for their account number or PIN. Decide whether their reply means they ` +
+      `genuinely don't know, don't remember, or don't have access to it right now - as opposed to actually ` +
+      `answering the question, asking to repeat it, or saying something unrelated. Judge the meaning, not ` +
+      `specific words; callers phrase this many different ways.`,
+    `Caller's reply: ${utterance}`,
+    { type: "object", properties: { cantProvideIt: { type: "boolean" } }, required: ["cantProvideIt"] }
+  );
+  return typeof result?.cantProvideIt === "boolean" ? result.cantProvideIt : null;
+}
+
 export async function extractDateAI(utterance: string, todayIso: string): Promise<string | null> {
   const result = await callGemini(
     `Today is ${todayIso}. Extract the calendar date the caller means from their spoken reply, resolving ` +

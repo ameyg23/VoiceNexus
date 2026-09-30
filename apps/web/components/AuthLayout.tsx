@@ -62,7 +62,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
         <div className="pointer-events-none absolute -right-10 top-1/3 h-40 w-40 rounded-full bg-brand-600/10" />
       </aside>
 
-      <main className="flex flex-1 justify-center px-4 py-12 sm:px-8 lg:items-start lg:pt-24">
+      <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-8 lg:items-start lg:pt-24">
         <div className="w-full max-w-sm">
           <Link href="/" className="mb-10 flex items-center gap-2 lg:hidden">
             <LogoMark className="h-7 w-7" />

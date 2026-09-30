@@ -421,9 +421,9 @@ async function scenarios() {
     await call.say("existing customer");
     await call.say("residential");
     const first = await call.say("999999");
-    expectText(first, /couldn't find an account.*2 attempts left/i, "first miss: 2 attempts left");
+    expectText(first, /wasn't able to find an account.*2 attempts left.*correct account number/i, "first miss: 2 attempts left");
     const second = await call.say("999998");
-    expectText(second, /couldn't find an account.*1 attempt left/i, "second miss: 1 attempt left (singular)");
+    expectText(second, /wasn't able to find an account.*1 attempt left.*correct account number/i, "second miss: 1 attempt left (singular)");
     const third = await call.say("999997");
     check("third miss transfers and marks the session FAILED", third.transfer && third.stage === "FAILED", JSON.stringify(third));
     // Routed by BILLING_DUE_DATE's own code (3023), not the shared general-enquiry one (3014) —
@@ -692,6 +692,78 @@ async function scenarios() {
     // logged first, or this FK-violates the same way scenario 20's cleanup once did for conversations.
     db.prepare(`DELETE FROM customer_events WHERE customer_id = (SELECT id FROM customers WHERE email = @e)`).run({ "@e": email });
     db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
+  }
+
+  console.log("\n25. Persistent 'just transfer me' at the opening: two offers to help first, then verifies before transferring, intent left unidentified (Sep 30)");
+  {
+    const call = await Call.start();
+    const first = await call.say("agent");
+    check("1st ask: offers to help instead of transferring", !first.transfer && !first.endCall, JSON.stringify(first));
+    expectText(first, /let me know what you need.*might be able to help/i, "pushback wording");
+
+    const second = await call.say("I need customer support");
+    check("2nd ask ('customer support' also counts): offers again, still no transfer", !second.transfer && !second.endCall, JSON.stringify(second));
+
+    const third = await call.say("just give me a live agent");
+    check("3rd ask: moves into verification instead of transferring unverified", !third.transfer && !third.endCall, JSON.stringify(third));
+    expectText(third, /existing Springfield Fiber customer, or a new customer/i, "starts identity verification");
+
+    const insistAgain = await call.say("agent");
+    check("asking again mid-verification doesn't restart or short-circuit it", !insistAgain.transfer && !insistAgain.endCall, JSON.stringify(insistAgain));
+    expectText(insistAgain, /connected with an agent as soon as we're done here/i, "reminded, then steered back to the pending question");
+
+    const final = await verifyPin(call, "100003", "5560");
+    check("transfers once verified", final.transfer && final.endCall && final.authStatus === "SUCCESS", JSON.stringify(final));
+    expectText(final, /Thanks, you're verified\..*Transferring you to agent/i, "verified first, then transferred");
+    const c = one(`SELECT detected_intent FROM conversations WHERE id = ?`, call.id);
+    check("intent left unidentified - no reason was ever stated", c?.detected_intent === null, JSON.stringify(c));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check(
+      "escalation verified, reason CALLER_REQUESTED, general-enquiry routing code (no topic to route by)",
+      e?.verified === 1 && e.reason === "CALLER_REQUESTED" && e.intent === null && e.routing_code === "3014",
+      JSON.stringify(e)
+    );
+  }
+
+  console.log("\n26. Caller can't recall their account number or PIN → asked for a ZIP instead, then handed to an agent (Sep 30)");
+  {
+    // Forgets the account number itself: never gets as far as AWAITING_PIN.
+    const call = await Call.start();
+    await call.say("what's my balance");
+    await call.say("existing customer");
+    await call.say("residential");
+    const asked = await call.say("I don't remember my account number");
+    check("asks for a ZIP instead of retrying, no transfer yet", !asked.transfer && !asked.endCall, JSON.stringify(asked));
+    expectText(asked, /zip code for your service address/i, "ZIP prompt");
+    const badZip = await call.say("somewhere in Springfield");
+    expectText(badZip, /didn't catch a zip code/i, "still needs 5 digits");
+    const final = await call.say("62701");
+    check("transfers once the ZIP is given", final.transfer && final.endCall && final.authStatus !== "SUCCESS", JSON.stringify(final));
+    expectText(final, /wasn't able to verify your account.*transfer you to a live agent/i, "unverified handoff wording");
+    const conv = one(`SELECT zip_provided FROM conversations WHERE id = ?`, call.id);
+    check("ZIP recorded on the conversation", conv?.zip_provided === "62701", JSON.stringify(conv));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check(
+      "escalation reason CREDENTIALS_FORGOTTEN, unverified, routed by the stated topic, ZIP in the attempted list",
+      e?.reason === "CREDENTIALS_FORGOTTEN" && e.verified === 0 && e.intent === "CHECK_BALANCE" && e.routing_code === "3020" && /gave ZIP code 62701/i.test(String(e?.attempted)),
+      JSON.stringify(e)
+    );
+  }
+
+  console.log("\n26b. Forgets the PIN specifically, after already giving a valid account number");
+  {
+    const call = await Call.start();
+    await call.say("I want to check my balance"); // a real opening request, same as every other scenario - "existing customer" said as the very first turn (still AWAITING_INTENT) reads as UNKNOWN, not a customer-kind answer
+    await call.say("existing customer");
+    await call.say("residential");
+    await call.say("100001"); // Amara Okafor - found fine, PIN is the problem
+    const asked = await call.say("I've forgotten my PIN");
+    check("asks for a ZIP instead of retrying the PIN", !asked.transfer && !asked.endCall, JSON.stringify(asked));
+    expectText(asked, /zip code for your service address/i, "ZIP prompt");
+    const final = await call.say("62701");
+    check("transfers unverified", final.transfer && final.endCall && final.authStatus !== "SUCCESS", JSON.stringify(final));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check("escalation reason CREDENTIALS_FORGOTTEN, account number already on record", e?.reason === "CREDENTIALS_FORGOTTEN" && /gave account number BAN100001/i.test(String(e?.attempted)), JSON.stringify(e));
   }
 }
 

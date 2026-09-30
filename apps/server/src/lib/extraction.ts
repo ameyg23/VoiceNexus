@@ -4,7 +4,16 @@
 // whatever is extracted against the DB either way — the extraction strategy never changes that.
 
 import type { CustomerType, Intent } from "@voice-nexus/shared";
-import { extractBanAI, extractPinAI, extractOtpAI, classifyIntentAI, classifyYesNoAI, extractDateAI, extractPlanAI } from "./aiEngine.js";
+import {
+  extractBanAI,
+  extractPinAI,
+  extractOtpAI,
+  classifyIntentAI,
+  classifyYesNoAI,
+  classifyForgotCredentialsAI,
+  extractDateAI,
+  extractPlanAI,
+} from "./aiEngine.js";
 import { parseSpokenDate, toIsoDate, todayLocal } from "./dates.js";
 import { PLAN_CATALOG, findPlan, matchPlanFromText, type PlanInfo } from "./businessLogic.js";
 
@@ -64,6 +73,19 @@ export function parseAccountType(text: string): "RESIDENTIAL" | "BUSINESS" | nul
 export const SWITCH_ACCOUNT_RE =
   /\b(wrong|different|another|other) account\b|\bswitch(ing)? accounts?\b|\bnot the (right|correct) account\b|\bmy other account\b/i;
 
+// A caller who genuinely can't produce their account number or PIN. The regex only covers the most
+// common phrasings ("I don't remember", "I forgot") and costs nothing when it matches; anything else
+// goes to the AI, which judges the meaning rather than matching words - callers don't all say this the
+// same way ("it's not coming to mind", "my partner set that up, I never knew it"), and the whole point
+// of this check is to actually understand them instead of guessing from a keyword list.
+const FORGOT_CREDENTIALS_RE =
+  /\b(don'?t|do not|dont|can'?t|cannot|no longer) (remember|recall|know|have)\b|\bforgot(ten)?\b|\blost (it|that|my (account number|pin|password))\b/i;
+
+export async function isForgotCredentials(text: string): Promise<boolean> {
+  if (FORGOT_CREDENTIALS_RE.test(text)) return true;
+  return (await classifyForgotCredentialsAI(text)) === true;
+}
+
 export async function extractOtp(text: string): Promise<string | null> {
   return extractOtpRegex(text) ?? (await extractOtpAI(text));
 }
@@ -107,7 +129,7 @@ export async function classifyIntent(text: string, examples: Partial<Record<Inte
 
 // Checked in order — more specific intents first ("can't pay my bill" is a promise, not a payment).
 const INTENT_KEYWORDS: [Intent, RegExp][] = [
-  ["AGENT_REQUEST", /\b(agent|representative|human|real person|live person|operator|customer service rep)\b|speak (to|with) (a |an )?(person|someone)/i],
+  ["AGENT_REQUEST", /\b(agent|representative|human|real person|live person|operator|customer service rep|customer support)\b|speak (to|with) (a |an )?(person|someone)/i],
   [
     "SERVICE_AVAILABILITY",
     /\bservice available\b|\bavailable (in|for|at) (my|your|this) area\b|\bdo you (cover|serve)\b|\baddress covered\b|\bservice area\b|\bsign(ing)? up\b|\bbecome a (new )?customer\b|\bnew customer\b/i,

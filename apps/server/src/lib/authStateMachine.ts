@@ -23,6 +23,7 @@ import {
   extractDate,
   extractPlan,
   extractRating,
+  isForgotCredentials,
 } from "./extraction.js";
 import {
   findCustomerByBan,
@@ -54,6 +55,11 @@ const ANYTHING_ELSE = "Is there anything else I can help you with?";
 // One retry before giving up on classifying the caller's opening request and moving on to
 // identifying them anyway ("if not clear, ask again; once clear, proceed").
 const INTENT_RETRY_LIMIT = 1;
+// A bare "agent"/"live agent"/"customer support" request at the very opening of a call, before any
+// real reason has been given, doesn't transfer unverified on the first ask (user request, Sep 30) -
+// the assistant offers to help twice, and only the 3rd insistence proceeds to full BAN+PIN
+// verification, transferring once authenticated with no specific intent recorded ("not identified").
+const AGENT_ASK_TRANSFER_AT = 3;
 
 type Subflow =
   | { type: "CUSTOMER_KIND" }
@@ -63,6 +69,7 @@ type Subflow =
   | { type: "EXISTING_SERVICE_ZIP" }
   | { type: "CONFIRM_BAN"; ban: string }
   | { type: "CONFIRM_PIN"; pin: string }
+  | { type: "FORGOT_CREDENTIALS_ZIP" }
   | { type: "CONFIRM_PAYMENT"; amount: number }
   | { type: "PLAN_CHANGE"; step: "CHOOSE" }
   | { type: "PLAN_CHANGE"; step: "CONFIRM"; plan: string }
@@ -87,6 +94,7 @@ interface AuthSessionRow {
   authenticated_at: string | null;
   subflow: string | null;
   unknown_streak: number;
+  agent_ask_streak: number;
 }
 
 export interface TurnResult {
@@ -127,6 +135,10 @@ function setSubflow(conversationId: string, subflow: Subflow | null) {
 
 function setUnknownStreak(conversationId: string, n: number) {
   db.prepare(`UPDATE auth_sessions SET unknown_streak = @n WHERE conversation_id = @cid`).run({ "@n": n, "@cid": conversationId });
+}
+
+function setAgentAskStreak(conversationId: string, n: number) {
+  db.prepare(`UPDATE auth_sessions SET agent_ask_streak = @n WHERE conversation_id = @cid`).run({ "@n": n, "@cid": conversationId });
 }
 
 function markAuthenticated(conversationId: string, customerId: string, authMethod: "PIN" | "EMAIL_OTP" | "SMS_OTP") {
@@ -220,7 +232,7 @@ function spokenDigits(s: string): string {
 // ---------- entry point ----------
 
 const BARE_NO_RE = /^\s*(no|nope|nah|neither|none of them|no thanks)\b[.!]?\s*$/i;
-const AGENT_RE = /\b(agent|representative|human|real person|live person|operator|customer service rep)\b|speak (to|with) (a |an )?(person|someone)/i;
+const AGENT_RE = /\b(agent|representative|human|real person|live person|operator|customer service rep|customer support)\b|speak (to|with) (a |an )?(person|someone)/i;
 const FAREWELL_RE = /\b(bye|goodbye|that'?s all|that is all|nothing else|no thanks|no thank you|i'?m (all )?(good|set|done)|that'?s it|all set)\b/i;
 // A prospect (or anyone not yet verified) asking a general catalog question - "what plans do you
 // have", "tell me about your services" - isn't account-specific, so it needs no verification and
@@ -252,7 +264,16 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
   // a caller who changes their mind after declining ("actually, transfer me") is a real, natural case
   // (found live, Sep 29) and the old CSAT carve-out here silently swallowed it: the CSAT handler below
   // unconditionally ends the call on any unrecognized reply, rating or not, so the request just vanished.
+  // Exception: a bare request right at the very opening, before any real reason has been given, goes
+  // through agentRequestedAtOpening() instead of transferring unverified on the first ask (see
+  // AGENT_ASK_TRANSFER_AT). Once that path has been committed to (mid-verification), repeating "agent"
+  // doesn't restart or short-circuit it — the caller is reminded and steered back to what's being asked.
   if (AGENT_RE.test(utterance)) {
+    if (session.stage === "AWAITING_INTENT" && !subflow) return agentRequestedAtOpening(ctx);
+    if (session.stage !== "AUTHENTICATED" && session.agent_ask_streak >= AGENT_ASK_TRANSFER_AT) {
+      const resume = pendingPrompt(subflow, session.stage) ?? "Let's finish this first.";
+      return reply(ctx, `I'll get you connected with an agent as soon as we're done here. ${resume}`);
+    }
     noteIntent(ctx.conversationId, "AGENT_REQUEST");
     return agentRequested(ctx);
   }
@@ -265,6 +286,17 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
     return reply(ctx, resume ? `${plansAndServicesText()} ${resume}` : plansAndServicesText());
   }
 
+  // "I don't remember my account number/PIN" - only when that's exactly what was just asked (plain
+  // AWAITING_BAN/AWAITING_PIN, or their confirm-if-unclear subflows), so it can't misfire during the
+  // earlier existing/new or residential/business questions. isForgotCredentials() understands this by
+  // meaning, not just a fixed set of phrases - see extraction.ts.
+  const askedForCredentialsDirectly =
+    (session.stage === "AWAITING_BAN" && (!subflow || subflow.type === "CONFIRM_BAN")) ||
+    (session.stage === "AWAITING_PIN" && (!subflow || subflow.type === "CONFIRM_PIN"));
+  if (askedForCredentialsDirectly && (await isForgotCredentials(utterance))) {
+    return forgotCredentials(ctx);
+  }
+
   if (subflow) return handleSubflow(ctx, subflow);
 
   if (FAREWELL_RE.test(utterance) && session.stage !== "AWAITING_INTENT") return closeCall(ctx);
@@ -273,8 +305,11 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
     case "AWAITING_INTENT": {
       // Best-effort intent capture before we know who's calling — verification still gates any data.
       const intent = await classify(ctx);
+      // Checked before noteIntent: an AI-classified (not regex-caught) agent request at the opening
+      // gets the same "offer to help twice, then verify" treatment as AGENT_RE above, and must not be
+      // stored as the call's intent — agentRequestedAtOpening() relies on it staying unset.
+      if (intent === "AGENT_REQUEST") return agentRequestedAtOpening(ctx);
       noteIntent(ctx.conversationId, intent);
-      if (intent === "AGENT_REQUEST") return agentRequested(ctx);
       if (intent === "SCHEDULE_CALLBACK") return startCallback(ctx, utterance); // needs no account access
 
       if (intent === "UNKNOWN") {
@@ -367,7 +402,7 @@ function lookupBan(ctx: Ctx, ban: string): TurnResult {
     }
     return reply(
       ctx,
-      `I couldn't find an account with that number. You have ${BAN_MAX_ATTEMPTS - attempts} attempt${BAN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Could you double-check it and try again?`
+      `I wasn't able to find an account with that number. You have ${BAN_MAX_ATTEMPTS - attempts} attempt${BAN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Could you please provide the correct account number?`
     );
   }
   db.prepare(`UPDATE auth_sessions SET customer_id = @custId WHERE conversation_id = @cid`).run({ "@custId": customer.id, "@cid": ctx.conversationId });
@@ -386,7 +421,17 @@ async function verifyPinTurn(ctx: Ctx, customer: CustomerRow, pin: string): Prom
     markFailed(ctx.conversationId);
     return escalationReply(ctx, "PIN_LOCKOUT");
   }
-  return reply(ctx, `That PIN doesn't match what we have on file. You have ${PIN_MAX_ATTEMPTS - attempts} attempt${PIN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Please try again.`);
+  return reply(
+    ctx,
+    `I wasn't able to verify that PIN. You have ${PIN_MAX_ATTEMPTS - attempts} attempt${PIN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Could you please provide the correct PIN?`
+  );
+}
+
+// Caller can't produce their account number or PIN - rather than looping on retries, take a ZIP code
+// as a lighter identifier and hand off to a person who can look them up (user request, Sep 30).
+function forgotCredentials(ctx: Ctx): TurnResult {
+  setSubflow(ctx.conversationId, { type: "FORGOT_CREDENTIALS_ZIP" });
+  return reply(ctx, "No problem, I can still get you to someone who can help. Could you tell me the ZIP code for your service address?");
 }
 
 // Mid-call re-verification against a different account, without ending the call or repeating intent
@@ -420,6 +465,14 @@ function startCredentialStage(ctx: Ctx, customer: CustomerRow): TurnResult {
 // Goal-directed: once verified, go straight to what the caller asked for at the start of the call.
 async function afterVerified(ctx: Ctx): Promise<TurnResult> {
   ctx.session = loadSession(ctx.conversationId);
+  // A caller who insisted on an agent 3 times at the opening (agentRequestedAtOpening) is transferred
+  // now, right after verifying — that was the whole point of making them verify first. detected_intent
+  // was deliberately left unset the whole way through, so this escalation logs with no topic ("not
+  // identified"), matching the fact that no real reason was ever stated.
+  if (ctx.session.agent_ask_streak >= AGENT_ASK_TRANSFER_AT) {
+    const result = agentRequested(ctx);
+    return { ...result, aiText: `Thanks, you're verified. ${result.aiText}` };
+  }
   const intent = storedIntent(ctx.conversationId);
   if (intent && intent !== "UNKNOWN" && intent !== "AGENT_REQUEST" && isIntentEnabled(intent, ctx.settings)) {
     const result = await handleIntent(ctx, intent, firstRequestText(ctx.conversationId));
@@ -564,6 +617,8 @@ function pendingPrompt(subflow: Subflow | null, stage: AuthStage): string | null
         return `Just to confirm, is your account number ${spokenDigits(subflow.ban)} right?`;
       case "CONFIRM_PIN":
         return `Just to confirm, is your PIN ${spokenDigits(subflow.pin)} right?`;
+      case "FORGOT_CREDENTIALS_ZIP":
+        return "Could you tell me the ZIP code for your service address?";
       default:
         return null;
     }
@@ -790,6 +845,15 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       return reply(ctx, `Sorry, is your PIN ${spokenDigits(sf.pin)}? Please say yes or no.`);
     }
 
+    case "FORGOT_CREDENTIALS_ZIP": {
+      if (isCancel(u)) return cancelled();
+      const zip = extractZip(u);
+      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      db.prepare(`UPDATE conversations SET zip_provided = @zip WHERE id = @cid`).run({ "@zip": zip, "@cid": ctx.conversationId });
+      setSubflow(ctx.conversationId, null);
+      return escalationReply(ctx, "CREDENTIALS_FORGOTTEN");
+    }
+
     case "CONFIRM_PAYMENT": {
       const question = `Charge ${money(sf.amount)} to the card on file now?`;
       const answer = await parseYesNo(u, question);
@@ -959,6 +1023,23 @@ function agentRequested(ctx: Ctx): TurnResult {
   return escalationReply(ctx, "CALLER_REQUESTED");
 }
 
+// A bare agent/live-agent/customer-support request right at the opening of a call, before the caller
+// has said what they actually need - see AGENT_ASK_TRANSFER_AT. First two asks offer to help instead
+// of transferring unverified; the 3rd proceeds into the normal existing/new-customer verification flow
+// (same CUSTOMER_KIND subflow a real request would start) so the caller is identified before being
+// handed off. detected_intent is deliberately left unset here ("not identified") - afterVerified()
+// checks agent_ask_streak once verification completes and transfers then, instead of asking again.
+function agentRequestedAtOpening(ctx: Ctx): TurnResult {
+  const streak = ctx.session.agent_ask_streak + 1;
+  setAgentAskStreak(ctx.conversationId, streak);
+  if (streak < AGENT_ASK_TRANSFER_AT) {
+    return reply(ctx, "Sure, but if you let me know what you need, I might be able to help you with that right now.");
+  }
+  setStage(ctx.conversationId, "AWAITING_BAN");
+  setSubflow(ctx.conversationId, { type: "CUSTOMER_KIND" });
+  return reply(ctx, "Okay, let's get you connected. First, are you an existing Springfield Fiber customer, or a new customer?");
+}
+
 function startCallbackWithNote(ctx: Ctx, note: string): TurnResult {
   const r = startCallback(ctx);
   return { ...r, aiText: `${note} ${r.aiText}` };
@@ -996,8 +1077,12 @@ function escalationReply(ctx: Ctx, reason: EscalationReason): TurnResult {
   setSubflow(ctx.conversationId, null);
   const verified = loadSession(ctx.conversationId).stage === "AUTHENTICATED";
   const intro =
-    reason === "PIN_LOCKOUT" || reason === "OTP_FAILED" || reason === "VERIFICATION_FAILED" || reason === "BAN_LOOKUP_FAILED"
-      ? "I'm not able to verify your identity on this call, so I'm transferring you to a live agent who can help."
+    reason === "PIN_LOCKOUT" ||
+    reason === "OTP_FAILED" ||
+    reason === "VERIFICATION_FAILED" ||
+    reason === "BAN_LOOKUP_FAILED" ||
+    reason === "CREDENTIALS_FORGOTTEN"
+      ? "I wasn't able to verify your account, so let me transfer you to a live agent for further help."
       : "I'm transferring you to a live agent now.";
   const context = verified
     ? "I've captured a summary of our conversation, so you won't have to repeat yourself."

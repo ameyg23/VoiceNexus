@@ -15,11 +15,13 @@ const REASON_TEXT: Record<EscalationReason, string> = {
   UNRESOLVED_REQUEST: "Assistant couldn't resolve the request in-flow",
   BAN_LOOKUP_FAILED: "Caller couldn't be identified: 3 account numbers not on file",
   NEW_CUSTOMER_ENROLLMENT: "New (not yet a customer) caller wants to sign up",
+  CREDENTIALS_FORGOTTEN: "Caller couldn't provide their account number or PIN",
 };
 
 interface ConversationFacts {
   ani: string;
   ban_provided: string | null;
+  zip_provided: string | null;
   customer_id: string | null;
   auth_status: string;
   auth_method: string | null;
@@ -35,7 +37,7 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
 
   const c = db
     .prepare(
-      `SELECT c.ani, c.ban_provided, c.customer_id, c.auth_status, c.auth_method, c.detected_intent,
+      `SELECT c.ani, c.ban_provided, c.zip_provided, c.customer_id, c.auth_status, c.auth_method, c.detected_intent,
               cu.name as customer_name, s.customer_id as session_customer_id, s.pin_attempts
        FROM conversations c
        LEFT JOIN auth_sessions s ON s.conversation_id = c.id
@@ -49,6 +51,7 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
   const customerId = c.customer_id ?? c.session_customer_id;
   const attempted: string[] = [];
   if (c.ban_provided) attempted.push(`Caller gave account number ${c.ban_provided}`);
+  if (c.zip_provided) attempted.push(`Couldn't recall account number/PIN; gave ZIP code ${c.zip_provided} instead`);
   if (verified) attempted.push(`Identity verified by ${c.auth_method === "PIN" ? "PIN" : c.auth_method === "SMS_OTP" ? "SMS one-time code" : "email one-time code"}`);
   else if (c.pin_attempts) attempted.push(`${c.pin_attempts} incorrect PIN attempt(s)`);
   const otps = db.prepare(`SELECT method, status FROM otps WHERE conversation_id = @cid ORDER BY id`).all({ "@cid": conversationId }) as { method: string; status: string }[];
