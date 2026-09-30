@@ -15,6 +15,15 @@ const FEATURES = [
   { icon: UsersIcon, title: "Local technicians", body: "Need a hand at home? We'll get someone out to you, usually within the week." },
 ];
 
+// Illustrative trust-signal numbers for the demo (Springfield Fiber is a fictional company - not
+// pulled from any real filing), styled after the quick stats strip on fidiumfiber.com.
+const STATS = [
+  { value: "50K+", label: "Homes & businesses connected" },
+  { value: "1 Gig", label: "Max download speed" },
+  { value: "24/7", label: "Always-on support" },
+  { value: "99.9%", label: "Network uptime" },
+];
+
 // Landing page for a customer who has a web login but hasn't bought a plan yet (account_status =
 // PROSPECT) - a real customer (has an active plan) is redirected straight past this to
 // /portal/account instead. Picking a plan here is what actually makes them a customer: it assigns a
@@ -156,6 +165,18 @@ export default function GetStartedPage() {
             </div>
           </section>
 
+          {/* Stats band - quick trust signals, styled after Fidium's stats strip */}
+          <section className="border-b border-gray-200 bg-white">
+            <div className="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
+              {STATS.map((s) => (
+                <div key={s.label} className="text-center">
+                  <p className="text-2xl font-bold text-brand-600 sm:text-3xl">{s.value}</p>
+                  <p className="mt-1 text-xs text-gray-500 sm:text-sm">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
             {/* Why us */}
             <section>
@@ -173,6 +194,32 @@ export default function GetStartedPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </section>
+
+            {/* Connected everywhere - a second real photo, feature-with-photo band (Fidium-style) */}
+            <section className="mt-12 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="grid gap-0 sm:grid-cols-2 sm:items-center">
+                <img
+                  src="https://images.unsplash.com/photo-1620862657788-a403bdf6dd63?w=900&q=80&auto=format&fit=crop"
+                  alt="A woman relaxing on her couch, working on a laptop over wifi at home"
+                  className="h-56 w-full object-cover sm:h-full"
+                />
+                <div className="p-6 sm:p-8">
+                  <span className="kicker">Wifi that reaches every room</span>
+                  <h2 className="mt-2 text-lg font-bold text-gray-900">Work, stream, and connect from anywhere in the house</h2>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Whole-home wifi coverage means no dead zones, whether you're on a video call in the office or streaming on the couch.
+                  </p>
+                  <ul className="mt-4 space-y-2 text-sm text-gray-600">
+                    <li className="flex items-start gap-2">
+                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> Free wifi router included with every plan
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> Set up the same day service is installed
+                    </li>
+                  </ul>
+                </div>
               </div>
             </section>
 
