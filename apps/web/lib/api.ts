@@ -517,3 +517,11 @@ export interface PlanInfo {
 export function fetchCustomerPlans() {
   return authFetch<{ plans: PlanInfo[] }>("/api/auth/customer/plans");
 }
+
+// Same service_areas lookup the phone flow's ZIP subflows use, so a web availability check always
+// agrees with what a call would say.
+export function checkServiceAvailability(zip: string, accountType: "RESIDENTIAL" | "BUSINESS") {
+  return authFetch<{ zip: string; accountType: string; available: boolean }>(
+    `/api/auth/customer/service-availability?zip=${encodeURIComponent(zip)}&accountType=${accountType}`
+  );
+}

@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
-import { PLAN_CATALOG, findPlan, type CustomerRow } from "../lib/businessLogic.js";
+import { PLAN_CATALOG, findPlan, isServiceAvailable, type CustomerRow } from "../lib/businessLogic.js";
 import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
@@ -193,6 +193,19 @@ customerAuthRouter.get("/activity", requireCustomerAuth, (req, res) => {
 // (businessLogic.ts), so "view plans" in the portal always matches what a call would actually offer.
 customerAuthRouter.get("/plans", requireCustomerAuth, (_req, res) => {
   res.json({ plans: PLAN_CATALOG });
+});
+
+// GET /api/auth/customer/service-availability?zip=XXXXX&accountType=RESIDENTIAL|BUSINESS — the same
+// `service_areas` lookup the phone flow's NEW_CUSTOMER_ZIP/EXISTING_SERVICE_ZIP subflows use
+// (businessLogic.ts::isServiceAvailable), exposed for the get-started page's instant availability
+// checker (user request, Sep 30: "put our availability into some areas... when they enter their area,
+// we can answer them from there itself" — modeled on fidiumfiber.com's address checker). A ZIP with no
+// row is treated as not (yet) covered, same "never guess" rule as the phone flow.
+customerAuthRouter.get("/service-availability", requireCustomerAuth, (req, res) => {
+  const zip = String(req.query.zip ?? "").trim();
+  const accountType = req.query.accountType === "BUSINESS" ? "BUSINESS" : "RESIDENTIAL";
+  if (!/^\d{5}$/.test(zip)) return res.status(400).json({ error: "enter a 5-digit ZIP code" });
+  res.json({ zip, accountType, available: isServiceAvailable(zip, accountType) });
 });
 
 customerAuthRouter.get("/me", requireCustomerAuth, (req, res) => {

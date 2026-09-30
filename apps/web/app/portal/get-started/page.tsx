@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { customerMe, customerActivity, fetchCustomerPlans, purchasePlan, logout, type CustomerAccount, type CustomerActivity, type PlanInfo } from "../../../lib/api";
+import {
+  customerMe,
+  customerActivity,
+  fetchCustomerPlans,
+  purchasePlan,
+  checkServiceAvailability,
+  logout,
+  type CustomerAccount,
+  type CustomerActivity,
+  type PlanInfo,
+} from "../../../lib/api";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
 import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon, WaveformIcon, CheckIcon, UsersIcon, GearIcon, LockIcon, ArrowRightIcon } from "../../../components/icons";
@@ -37,7 +47,7 @@ const USE_CASES = [
 ];
 
 const FAQS: { q: string; a: string }[] = [
-  { q: "Is Springfield Fiber available in my area?", a: "In most covered ZIP codes, yes. Call the number below and our assistant can check your address in seconds, or pick a plan above to get started right away." },
+  { q: "Is Springfield Fiber available in my area?", a: "In most covered ZIP codes, yes. Use the ZIP checker above for an instant answer, or call the number below and our assistant can check it for you." },
   { q: "Are there contracts or data caps?", a: "No. Every plan is month-to-month with unlimited data. Cancel any time, no early-termination fees." },
   { q: "What's included when I sign up?", a: "Free professional installation, a wifi router, and 24/7 automated support that can connect you to a live agent any time you need one." },
   { q: "How is a business plan different?", a: "Business plans add a static IP and priority support on the same fiber network, at business-tier pricing." },
@@ -60,6 +70,10 @@ export default function GetStartedPage() {
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [planAudience, setPlanAudience] = useState<"RESIDENTIAL" | "BUSINESS">("RESIDENTIAL");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [zipInput, setZipInput] = useState("");
+  const [checkingZip, setCheckingZip] = useState(false);
+  const [zipResult, setZipResult] = useState<{ zip: string; available: boolean } | null>(null);
+  const [zipError, setZipError] = useState<string | null>(null);
 
   useEffect(() => {
     customerMe()
@@ -92,6 +106,21 @@ export default function GetStartedPage() {
       setError("Couldn't complete that just now. Please try again.");
     } finally {
       setBuying(null);
+    }
+  }
+
+  async function handleCheckAvailability(e: React.FormEvent) {
+    e.preventDefault();
+    setCheckingZip(true);
+    setZipError(null);
+    setZipResult(null);
+    try {
+      const result = await checkServiceAvailability(zipInput, planAudience);
+      setZipResult({ zip: result.zip, available: result.available });
+    } catch {
+      setZipError("Couldn't check that ZIP code just now. Please try again.");
+    } finally {
+      setCheckingZip(false);
     }
   }
 
@@ -319,6 +348,44 @@ export default function GetStartedPage() {
                     ))
                 )}
               </div>
+            </section>
+
+            {/* Check availability - a real lookup against the same service_areas table the phone
+                flow's ZIP questions use (businessLogic.ts::isServiceAvailable), modeled on
+                fidiumfiber.com's address checker (user request, Sep 30: "put our availability into
+                some areas... when they enter their area, we can answer them from there itself").
+                Scoped to whichever audience is selected above, so a "for your business" visitor
+                checking their ZIP gets a business-coverage answer, not a residential one. */}
+            <section className="mt-12 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+              <span className="kicker">Ready to see if we're in your area?</span>
+              <h2 className="mt-2 text-lg font-bold text-gray-900">Check availability by ZIP code</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                We'll check {planAudience === "BUSINESS" ? "business" : "residential"} coverage right away, no call needed.
+              </p>
+              <form onSubmit={(e) => void handleCheckAvailability(e)} className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <input
+                  value={zipInput}
+                  onChange={(e) => {
+                    setZipInput(e.target.value.replace(/\D/g, "").slice(0, 5));
+                    setZipResult(null);
+                  }}
+                  placeholder="Enter your ZIP code"
+                  inputMode="numeric"
+                  aria-label="ZIP code"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:max-w-xs"
+                />
+                <button type="submit" disabled={zipInput.length !== 5 || checkingZip} className="btn btn-primary px-6 py-2.5 text-sm disabled:opacity-50">
+                  {checkingZip ? "Checking…" : "Check availability"}
+                </button>
+              </form>
+              {zipError && <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{zipError}</p>}
+              {zipResult && (
+                <p className={`mt-4 rounded-lg px-4 py-3 text-sm ${zipResult.available ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
+                  {zipResult.available
+                    ? `Good news! Springfield Fiber ${planAudience === "BUSINESS" ? "business" : "residential"} service is available in ${zipResult.zip}. Pick a plan above to get started.`
+                    : `We're not in ${zipResult.zip} yet. Call us below and we'll let you know as soon as we're in your area.`}
+                </p>
+              )}
             </section>
 
             {/* FAQ */}
