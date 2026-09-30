@@ -122,7 +122,8 @@ export default function GetStartedPage() {
       ) : (
         <>
           {/* Hero — a normal commercial-site landing, not a pricing table up front (user request:
-              "we should not directly throw all the plans in their face"). */}
+              "we should not directly throw all the plans in their face"; structure loosely inspired
+              by fidiumfiber.com's split hero-with-photo, not copied). */}
           <section className="relative overflow-hidden bg-ink-950 text-white">
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.06]"
@@ -130,18 +131,28 @@ export default function GetStartedPage() {
               aria-hidden="true"
             />
             <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-brand-600/20" />
-            <div className="relative mx-auto max-w-4xl px-4 py-16 text-center sm:px-6">
-              <span className="kicker text-brand-500">Welcome, {customer.name.split(" ")[0]}</span>
-              <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">
-                Fiber internet built for <span className="text-brand-500">your home.</span>
-              </h1>
-              <p className="mx-auto mt-4 max-w-xl text-gray-400">
-                Springfield Fiber keeps you connected with fast, reliable internet and support that actually picks up. Take a look at what we offer,
-                then choose a plan whenever you're ready.
-              </p>
-              <a href="#plans" className="btn btn-primary mt-7 inline-flex px-6 py-2.5 text-sm">
-                View plans
-              </a>
+            <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-20">
+              <div className="text-center lg:text-left">
+                <span className="kicker text-brand-500">Welcome, {customer.name.split(" ")[0]}</span>
+                <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">
+                  Fiber internet built for <span className="text-brand-500">your home.</span>
+                </h1>
+                <p className="mx-auto mt-4 max-w-xl text-gray-400 lg:mx-0">
+                  Springfield Fiber keeps you connected with fast, reliable internet and support that actually picks up. Take a look at what we offer,
+                  then choose a plan whenever you're ready.
+                </p>
+                <a href="#plans" className="btn btn-primary mt-7 inline-flex px-6 py-2.5 text-sm">
+                  View plans
+                </a>
+              </div>
+              <div className="relative">
+                <div className="pointer-events-none absolute -inset-4 rounded-[2rem] bg-brand-600/10 blur-2xl" aria-hidden="true" />
+                <img
+                  src="https://images.unsplash.com/photo-1758687125866-6b9d86d41cc5?w=1000&q=80&auto=format&fit=crop"
+                  alt="A father and son relaxing on the couch, streaming a show together at home"
+                  className="relative aspect-[4/3] w-full rounded-2xl object-cover shadow-2xl ring-1 ring-white/10"
+                />
+              </div>
             </div>
           </section>
 
