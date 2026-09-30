@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { customerMe, customerActivity, fetchCustomerPlans, purchasePlan, logout, type CustomerAccount, type CustomerActivity, type PlanInfo } from "../../../lib/api";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
-import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon, WaveformIcon, CheckIcon, UsersIcon } from "../../../components/icons";
+import { LogoMark, PhoneIcon, LogoutIcon, HeadsetIcon, WaveformIcon, CheckIcon, UsersIcon, GearIcon, LockIcon, ArrowRightIcon } from "../../../components/icons";
 import { formatMoney } from "../../../lib/format";
 
 const FEATURES = [
@@ -13,6 +13,8 @@ const FEATURES = [
   { icon: HeadsetIcon, title: "24/7 automated support", body: "Call any time, day or night, and get help in seconds - a live agent is always one ask away." },
   { icon: CheckIcon, title: "No contracts, no surprises", body: "Simple monthly pricing, cancel any time. No hidden fees, no early-termination charges." },
   { icon: UsersIcon, title: "Local technicians", body: "Need a hand at home or on-site at your business? We'll get someone out to you, usually within the week." },
+  { icon: GearIcon, title: "Free professional installation", body: "We set up and test your connection so it works the way it should from day one." },
+  { icon: LockIcon, title: "A connection you can count on", body: "Dedicated fiber and a proactively monitored network, built to stay reliable when it matters most." },
 ];
 
 // Illustrative trust-signal numbers for the demo (Springfield Fiber is a fictional company - not
@@ -22,6 +24,24 @@ const STATS = [
   { value: "1 Gig", label: "Max download speed" },
   { value: "24/7", label: "Always-on support" },
   { value: "99.9%", label: "Network uptime" },
+];
+
+// A dark, plain-text band (no icons/cards) for visual variety against the light sections around it -
+// loosely mirrors fidiumfiber.com's "How people use Fidium Fiber at home" band, adapted to cover
+// business use too since this page now serves both audiences.
+const USE_CASES = [
+  { title: "Gaming without lag", body: "Low latency and consistent speeds keep gameplay smooth, even during peak hours." },
+  { title: "Work and school at the same time", body: "Fast uploads make video calls clearer and file sharing quicker, even with everyone online at once." },
+  { title: "Streaming everywhere", body: "Stream in 4K across multiple devices without buffering or slowdowns." },
+  { title: "Always-on for business", body: "A static IP and priority support keep point-of-sale, calls, and cloud tools running without a hitch." },
+];
+
+const FAQS: { q: string; a: string }[] = [
+  { q: "Is Springfield Fiber available in my area?", a: "In most covered ZIP codes, yes. Call the number below and our assistant can check your address in seconds, or pick a plan above to get started right away." },
+  { q: "Are there contracts or data caps?", a: "No. Every plan is month-to-month with unlimited data. Cancel any time, no early-termination fees." },
+  { q: "What's included when I sign up?", a: "Free professional installation, a wifi router, and 24/7 automated support that can connect you to a live agent any time you need one." },
+  { q: "How is a business plan different?", a: "Business plans add a static IP and priority support on the same fiber network, at business-tier pricing." },
+  { q: "Can I speak to a live person?", a: "Yes, any time. Just ask for an agent during your call and you'll be transferred with a summary of what you've already told us, so you don't have to repeat yourself." },
 ];
 
 // Landing page for a customer who has a web login but hasn't bought a plan yet (account_status =
@@ -39,6 +59,7 @@ export default function GetStartedPage() {
   const [purchased, setPurchased] = useState<{ ban: string; pin: string; planName: string } | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [planAudience, setPlanAudience] = useState<"RESIDENTIAL" | "BUSINESS">("RESIDENTIAL");
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   useEffect(() => {
     customerMe()
@@ -166,24 +187,25 @@ export default function GetStartedPage() {
             </div>
           </section>
 
-          {/* Stats band - quick trust signals, styled after Fidium's stats strip */}
-          <section className="border-y border-gray-200 bg-slate-50">
+          {/* Stats band - quick trust signals, styled after Fidium's colorful stat-strip treatment
+              rather than a plain bordered band, for more visual variety on the page. */}
+          <section className="bg-gradient-to-br from-brand-600 to-brand-800">
             <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
               {STATS.map((s) => (
                 <div key={s.label} className="text-center">
-                  <p className="text-2xl font-bold text-brand-600 sm:text-3xl">{s.value}</p>
-                  <p className="mt-1 text-xs text-gray-500 sm:text-sm">{s.label}</p>
+                  <p className="text-2xl font-bold text-white sm:text-3xl">{s.value}</p>
+                  <p className="mt-1 text-xs text-white/80 sm:text-sm">{s.label}</p>
                 </div>
               ))}
             </div>
           </section>
 
-          <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+          <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
             {/* Why us */}
             <section>
               <span className="kicker">Why Springfield Fiber</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Everything you'd expect, nothing you wouldn't</h2>
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {FEATURES.map(({ icon: Icon, title, body }) => (
                   <div key={title} className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
@@ -197,7 +219,28 @@ export default function GetStartedPage() {
                 ))}
               </div>
             </section>
+          </div>
 
+          {/* How people use it - a dark, plain-text band for visual contrast against the light
+              sections around it (Fidium-style "how people use it at home" pattern, adapted to cover
+              business use too). */}
+          <section className="bg-ink-950 py-12 text-white">
+            <div className="mx-auto max-w-4xl px-4 sm:px-6">
+              <h2 className="text-2xl font-bold">
+                How people use <span className="text-brand-500">Springfield Fiber.</span>
+              </h2>
+              <div className="mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+                {USE_CASES.map((u) => (
+                  <div key={u.title}>
+                    <p className="font-semibold text-white">{u.title}</p>
+                    <p className="mt-1.5 text-sm text-gray-400">{u.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
             {/* Connected everywhere - a second real photo, feature-with-photo band (Fidium-style) */}
             <section className="mt-12 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div className="grid gap-0 sm:grid-cols-2 sm:items-center">
@@ -275,6 +318,30 @@ export default function GetStartedPage() {
                       </div>
                     ))
                 )}
+              </div>
+            </section>
+
+            {/* FAQ */}
+            <section className="mt-12">
+              <span className="kicker">Have questions?</span>
+              <h2 className="mt-2 text-lg font-bold text-gray-900">We've got answers</h2>
+              <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                {FAQS.map((item, i) => {
+                  const open = openFaq === i;
+                  return (
+                    <div key={item.q}>
+                      <button
+                        onClick={() => setOpenFaq(open ? null : i)}
+                        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                        aria-expanded={open}
+                      >
+                        {item.q}
+                        <ArrowRightIcon className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
+                      </button>
+                      {open && <p className="px-5 pb-4 text-sm leading-relaxed text-gray-600">{item.a}</p>}
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
