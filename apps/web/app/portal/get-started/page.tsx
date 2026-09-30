@@ -133,21 +133,21 @@ export default function GetStartedPage() {
         <>
           {/* Hero — a normal commercial-site landing, not a pricing table up front (user request:
               "we should not directly throw all the plans in their face"; structure loosely inspired
-              by fidiumfiber.com's split hero-with-photo, not copied). */}
-          <section className="relative overflow-hidden bg-ink-950 text-white">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.06]"
-              style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "22px 22px" }}
-              aria-hidden="true"
-            />
-            <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-brand-600/20" />
-            <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-20">
+              by fidiumfiber.com's split hero-with-photo, not copied). Light background, not the dark
+              nav's black (found and fixed Sep 30 - a solid-black hero directly under the equally-black
+              header read as one oversized, undifferentiated black slab, flagged as unprofessional).
+              Also standardized on the same max-w-4xl the header and every section below already use -
+              this used to be max-w-6xl (and the stats band below was max-w-5xl), so the hero and stats
+              content never actually lined up with the header logo or the page content under them. */}
+          <section className="relative overflow-hidden bg-white">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-50" aria-hidden="true" />
+            <div className="relative mx-auto grid max-w-4xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-16">
               <div className="text-center lg:text-left">
-                <span className="kicker text-brand-500">Welcome, {customer.name.split(" ")[0]}</span>
-                <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">
-                  Fiber internet built for <span className="text-brand-500">your home or business.</span>
+                <span className="kicker text-brand-600">Welcome, {customer.name.split(" ")[0]}</span>
+                <h1 className="mt-3 text-3xl font-bold leading-tight text-gray-900 sm:text-4xl">
+                  Fiber internet built for <span className="text-brand-600">your home or business.</span>
                 </h1>
-                <p className="mx-auto mt-4 max-w-xl text-gray-400 lg:mx-0">
+                <p className="mx-auto mt-4 max-w-xl text-gray-600 lg:mx-0">
                   Springfield Fiber keeps homes and businesses connected with fast, reliable internet and support that actually picks up. Take a look at
                   what we offer, then choose a plan whenever you're ready.
                 </p>
@@ -160,15 +160,15 @@ export default function GetStartedPage() {
                 <img
                   src="https://images.unsplash.com/photo-1758687125866-6b9d86d41cc5?w=1000&q=80&auto=format&fit=crop"
                   alt="A father and son relaxing on the couch, streaming a show together at home"
-                  className="relative aspect-[4/3] w-full rounded-2xl object-cover shadow-2xl ring-1 ring-white/10"
+                  className="relative aspect-[4/3] w-full rounded-2xl object-cover shadow-xl ring-1 ring-gray-900/5"
                 />
               </div>
             </div>
           </section>
 
           {/* Stats band - quick trust signals, styled after Fidium's stats strip */}
-          <section className="border-b border-gray-200 bg-white">
-            <div className="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
+          <section className="border-y border-gray-200 bg-slate-50">
+            <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4 lg:gap-4">
               {STATS.map((s) => (
                 <div key={s.label} className="text-center">
                   <p className="text-2xl font-bold text-brand-600 sm:text-3xl">{s.value}</p>
