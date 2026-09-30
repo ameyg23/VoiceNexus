@@ -8,14 +8,13 @@ import { AuthLayout, Field, PasswordInput, SubmitButton, inputClass } from "../.
 import { LogoMark } from "../../components/icons";
 import { formatMoney } from "../../lib/format";
 
-// Public signup creates a web login (employee accounts are created by an existing admin) - no BAN
-// or phone PIN yet on its own. Two ways to end up with one:
-//   1. Arriving with ?plan=<name> from a plan card on the public homepage (user request, Sep 30:
-//      "instead of a sign up page, once they click on any plans/packages/services while
-//      purchasing it we will get their details") - signup and purchase happen back to back, right
-//      here, and the assigned BAN+PIN are shown immediately, no extra page.
-//   2. A plain /signup visit with no plan context (bookmarked, or reached some other way) - falls
-//      back to the original behavior, landing on /portal/get-started to pick a plan there.
+// Account creation only happens as part of buying a plan now (user request, Sep 30: "in the login
+// page there should not be a create an account page option, that should only happen when the user
+// selects a plan and proceeds for purchasing... once its done, the user is created and then they
+// can login") - /login no longer links here at all, and a bare /signup with no ?plan=<name> (picked
+// on a plan card on the public homepage) redirects to the plans section instead of showing a form.
+// Signup and purchase happen back to back in one submit here, and the assigned BAN+PIN are shown
+// immediately, no extra page.
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,26 +30,26 @@ function SignupForm() {
   const [purchased, setPurchased] = useState<{ ban: string; pin: string; planName: string } | null>(null);
 
   useEffect(() => {
-    if (!planName) return;
+    if (!planName) {
+      router.replace("/#plans");
+      return;
+    }
     fetchPublicPlans()
       .then((plans) => setSelectedPlan(plans.find((p) => p.name === planName) ?? null))
       .catch(() => {});
-  }, [planName]);
+  }, [planName, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!planName) return;
     if (password !== confirm) return setError("Passwords don't match.");
 
     setLoading(true);
     setError(null);
     try {
       await customerSignup(name.trim(), email.trim(), password);
-      if (planName) {
-        const result = await purchasePlan(planName);
-        setPurchased(result);
-        return;
-      }
-      router.push("/portal/get-started");
+      const result = await purchasePlan(planName);
+      setPurchased(result);
     } catch (err) {
       const msg = String(err);
       if (msg.includes("409")) setError("An account with that email already exists. Try signing in instead.");
@@ -91,6 +90,10 @@ function SignupForm() {
     );
   }
 
+  if (!planName) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-gray-400">Redirecting…</div>;
+  }
+
   return (
     <AuthLayout
       title={selectedPlan ? `Get ${selectedPlan.name}` : "Create your account"}
@@ -103,14 +106,12 @@ function SignupForm() {
         </>
       }
     >
-      {planName && (
-        <div className="mb-5 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
-          <p className="text-sm font-semibold text-brand-800">
-            {selectedPlan ? `${selectedPlan.name} - ${formatMoney(selectedPlan.monthlyPrice)}/mo` : planName}
-          </p>
-          {selectedPlan && <p className="mt-0.5 text-xs text-brand-700">{selectedPlan.description}</p>}
-        </div>
-      )}
+      <div className="mb-5 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+        <p className="text-sm font-semibold text-brand-800">
+          {selectedPlan ? `${selectedPlan.name} - ${formatMoney(selectedPlan.monthlyPrice)}/mo` : planName}
+        </p>
+        {selectedPlan && <p className="mt-0.5 text-xs text-brand-700">{selectedPlan.description}</p>}
+      </div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <Field label="Full name" htmlFor="name">
           <input id="name" required autoComplete="name" autoFocus value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
@@ -138,8 +139,8 @@ function SignupForm() {
             {error}
           </p>
         )}
-        <SubmitButton loading={loading} loadingText={planName ? "Setting up…" : "Creating account…"}>
-          {planName ? "Create account & activate" : "Create account"}
+        <SubmitButton loading={loading} loadingText="Setting up…">
+          Create account & activate
         </SubmitButton>
       </form>
     </AuthLayout>

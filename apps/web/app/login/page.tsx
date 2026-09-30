@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { login } from "../../lib/api";
 import { AuthLayout, Field, PasswordInput, SubmitButton, inputClass } from "../../components/AuthLayout";
@@ -29,17 +28,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthLayout
-      title="Sign in"
-      subtitle={
-        <>
-          New here?{" "}
-          <Link href="/signup" className="font-medium text-brand-600 hover:text-brand-700">
-            Create an account
-          </Link>
-        </>
-      }
-    >
+    <AuthLayout title="Sign in">
       <form onSubmit={handleSubmit} className="space-y-5">
         <Field label="Email" htmlFor="email">
           <input

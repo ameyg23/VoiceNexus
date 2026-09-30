@@ -68,7 +68,7 @@ export default function HomePage() {
             <a href="/login" className="text-sm font-medium text-gray-300 hover:text-white">
               My account
             </a>
-            <a href="/signup" className="btn btn-primary px-4 py-1.5 text-sm">
+            <a href="#plans" className="btn btn-primary px-4 py-1.5 text-sm">
               Get started
             </a>
           </div>

@@ -8,7 +8,7 @@ import { LogoMark, CheckIcon } from "./icons";
 
 // Split-screen layout shared by /login and /signup: brand panel on the left (hidden on small
 // screens), form on the right. Visitors who are already signed in are sent straight home.
-export function AuthLayout({ title, subtitle, children }: { title: string; subtitle: React.ReactNode; children: React.ReactNode }) {
+export function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: React.ReactNode; children: React.ReactNode }) {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
@@ -73,7 +73,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
           ) : (
             <>
               <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-              <p className="mt-1.5 text-sm text-gray-500">{subtitle}</p>
+              {subtitle && <p className="mt-1.5 text-sm text-gray-500">{subtitle}</p>}
               <div className="mt-8">{children}</div>
             </>
           )}
