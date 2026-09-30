@@ -5,7 +5,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@voice-nexus/db";
 import { requireEmployeeAuth } from "../lib/auth.js";
-import { DEFAULT_SETTINGS, getSettings, settingsSchema, updateSettings, buildGreeting, toSpeech } from "../lib/settings.js";
+import { DEFAULT_SETTINGS, getSettings, settingsSchema, updateSettings, buildGreeting, toSpeech, routingCodeForIntent } from "../lib/settings.js";
 import { describeAction, safeJson } from "../lib/actions.js";
 import { sqliteUtcToIso } from "../lib/outcome.js";
 
@@ -51,6 +51,7 @@ interface EscalationRow {
   intent: string | null;
   summary: string;
   attempted: string;
+  routing_code: string | null;
   status: string;
   accepted_by_name: string | null;
   notes: string | null;
@@ -66,7 +67,10 @@ const ESCALATION_SELECT = `
   LEFT JOIN customers cu ON cu.id = e.customer_id
   LEFT JOIN employees emp ON emp.id = e.accepted_by`;
 
-export function toEscalationView(r: EscalationRow) {
+// `settings` is passed in (not re-fetched per row) so mapping a list of escalations doesn't re-query
+// tenant_settings once per row — see call sites below.
+export function toEscalationView(r: EscalationRow, settings = getSettings()) {
+  const expectedRoutingCode = routingCodeForIntent(settings, r.intent);
   return {
     id: r.id,
     conversationId: r.conversation_id,
@@ -85,6 +89,13 @@ export function toEscalationView(r: EscalationRow) {
         return [];
       }
     })(),
+    routingCode: r.routing_code,
+    // What the caller's topic *should* have routed to, per the current per-intent settings, next to
+    // what was actually spoken (routingCode) — lets ops spot a misroute at a glance (user request).
+    // A mismatch here means either a real routing bug, or the operator changed the routing codes
+    // after this call happened — both are worth a human's eyes, so it's surfaced either way.
+    expectedRoutingCode,
+    routingMatch: r.routing_code === null || r.routing_code === expectedRoutingCode,
     status: r.status,
     acceptedByName: r.accepted_by_name,
     notes: r.notes,
@@ -108,7 +119,8 @@ escalationsRouter.get("/", (req, res) => {
   const { status } = parsed.data;
   const where = status === "OPEN" ? `WHERE e.status IN ('WAITING', 'ACCEPTED')` : status ? `WHERE e.status = @status` : "";
   const rows = db.prepare(`${ESCALATION_SELECT} ${where} ORDER BY e.id DESC LIMIT 500`).all(status && status !== "OPEN" ? { "@status": status } : {}) as unknown as EscalationRow[];
-  res.json({ escalations: rows.map(toEscalationView) });
+  const settings = getSettings();
+  res.json({ escalations: rows.map((r) => toEscalationView(r, settings)) });
 });
 
 // POST /api/escalations/:id/accept — an agent picks up the handoff.

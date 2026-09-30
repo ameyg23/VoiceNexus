@@ -69,11 +69,7 @@ export default function CallsPage() {
       title="Calls"
       subtitle="Search and view all calls."
       actions={
-        <button
-          onClick={exportCsv}
-          disabled={!calls?.length}
-          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-        >
+        <button onClick={exportCsv} disabled={!calls?.length} className="btn btn-secondary px-4 py-2 text-sm">
           Export CSV
         </button>
       }

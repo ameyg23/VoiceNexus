@@ -7,7 +7,7 @@ import { fetchCustomer } from "../../../../lib/api";
 import { AdminShell, Card, ErrorNote, StatTile } from "../../../../components/AdminShell";
 import { Badge } from "../../../../components/Badge";
 import { CallsTable } from "../../../../components/CallsTable";
-import { ACTION_LABELS, MFA_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../../lib/format";
+import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../../lib/format";
 
 type CustomerDetail = Awaited<ReturnType<typeof fetchCustomer>>;
 
@@ -38,7 +38,7 @@ export default function CustomerDetailPage() {
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatTile label="Current balance" value={formatMoney(c.currentBalance)} hint={c.pastDueAmount > 0 ? `${formatMoney(c.pastDueAmount)} past due` : "Nothing past due"} />
-            <StatTile label="Next bill due" value={c.nextBillingDueDate ?? "—"} />
+            <StatTile label="Next bill due" value={c.nextBillingDueDate ?? "-"} />
             <StatTile label="Last payment" value={formatMoney(c.lastPaymentAmount)} hint={c.lastPaymentDate ?? undefined} />
             <StatTile label="Calls" value={detail.stats.total} hint={`${detail.stats.resolved} resolved · ${detail.stats.escalated} escalated`} />
           </div>
@@ -51,10 +51,9 @@ export default function CustomerDetailPage() {
               <Field label="Email" value={c.email} />
               <Field label="Plan" value={`${c.planName}${c.discountPercent > 0 ? ` · ${c.discountPercent}% discount` : ""}`} />
               <Field label="Account status" value={c.accountStatus} />
-              <Field label="Phone verification" value={<Badge tone={c.mfaMethod === "NONE" ? "neutral" : "info"}>{MFA_LABELS[c.mfaMethod]}</Badge>} />
               <Field label="Autopay" value={c.autopayEnabled ? "On" : "Off"} />
               <Field label="Portal account" value={c.hasPortalAccount ? "Yes" : "No"} />
-              <Field label="Service ZIP" value={c.serviceZip ?? "—"} />
+              <Field label="Service ZIP" value={c.serviceZip ?? "-"} />
             </dl>
           </Card>
 

@@ -37,6 +37,18 @@ export const settingsSchema = z.object({
   unknownTurnsBeforeEscalation: z.number().int().min(1).max(5),
   // E.164 number to <Dial> on a phone-channel transfer; blank = queue the handoff and end the call.
   agentTransferNumber: z.string().trim().max(20).regex(/^(\+\d{8,15})?$/, "use E.164, e.g. +15551234567"),
+  // Spoken before every live-agent transfer, e.g. "I'm transferring you now. Your reference code is 3014."
+  // No real routing happens (there's no live agent in this deployment) — this announces which queue a
+  // real transfer would have gone to, for realism and for reporting.
+  routingCodes: z.object({
+    generalEnquiry: z.string().trim().min(1).max(12), // fallback when intent is unknown, or has no code of its own
+    newCustomerResidential: z.string().trim().min(1).max(12),
+    newCustomerBusiness: z.string().trim().min(1).max(12),
+    // One code per topic (PRD-adjacent, user request): so a call transcript can show which queue a
+    // caller's actual topic should have routed to, next to which code was actually spoken — lets ops
+    // spot a misroute at a glance instead of every transfer landing in one generic bucket.
+    byIntent: z.record(z.string(), z.string().trim().min(1).max(12)),
+  }),
   intentOverrides: z.record(z.string(), intentOverrideSchema),
   // Cost model for the "cost per care call" report (PRD §10) — operator's own rates.
   costPerMinuteAutomated: z.number().min(0).max(100),
@@ -57,18 +69,39 @@ export const DEFAULT_SETTINGS: TenantSettings = {
     { from: "OTP", to: "O-T-P" },
     { from: "Wi-Fi", to: "why-fye" },
   ],
-  greetingPrompt: "Thanks for calling {brand}. {disclosures} What can I help you with today?",
+  greetingPrompt: "Hi! Thanks for calling {brand}. {disclosures} What can I help you with today?",
   holdPrompt: "One moment while I look that up.",
   closePrompt: "Thanks for calling {brand}. Have a great day!",
   aiDisclosureEnabled: true,
   aiDisclosureText: "I'm {assistant}, {brand}'s automated virtual assistant.",
   recordingEnabled: true,
-  recordingDisclosureEnabled: true,
+  recordingDisclosureEnabled: false,
   recordingDisclosureText: "This call may be recorded for quality and training.",
-  csatSurveyEnabled: true,
+  csatSurveyEnabled: false,
   escalateOnAgentRequest: true,
   unknownTurnsBeforeEscalation: 2,
   agentTransferNumber: "",
+  routingCodes: {
+    generalEnquiry: "3014",
+    newCustomerResidential: "3000",
+    newCustomerBusiness: "3003",
+    byIntent: {
+      CHECK_BALANCE: "3020",
+      MAKE_PAYMENT: "3021",
+      PAYMENT_HISTORY: "3022",
+      BILLING_DUE_DATE: "3023",
+      PAYMENT_PROMISE: "3024",
+      PLAN_INFO: "3025",
+      PLAN_CHANGE: "3026",
+      AUTOPAY_STATUS: "3027",
+      OUTAGE_CHECK: "3028",
+      TECH_TRIAGE: "3029",
+      SCHEDULE_TECH: "3030",
+      SCHEDULE_CALLBACK: "3031",
+      SERVICE_AVAILABILITY: "3032",
+      AGENT_REQUEST: "3033",
+    },
+  },
   intentOverrides: {},
   costPerMinuteAutomated: 0.05,
   costPerMinuteAgent: 1.0,
@@ -138,6 +171,15 @@ export function toSpeech(text: string, s: TenantSettings = getSettings()): strin
 
 export function isIntentEnabled(intent: Intent, s: TenantSettings = getSettings()): boolean {
   return s.intentOverrides[intent]?.enabled ?? true;
+}
+
+// The routing code a live-agent transfer should announce for a given caller intent — one shared
+// lookup used both when a transfer actually happens (authStateMachine.ts) and when displaying what
+// *should* have been used next to what actually was (operations.ts, Call Detail), so the two can
+// never drift apart. Falls back to the general-enquiry code when the intent has no code of its own,
+// or wasn't captured (caller never got far enough to state one).
+export function routingCodeForIntent(s: TenantSettings, intent: Intent | string | null): string {
+  return (intent && s.routingCodes.byIntent[intent]) || s.routingCodes.generalEnquiry;
 }
 
 export const LANGUAGE_NAMES: Record<Language, string> = {

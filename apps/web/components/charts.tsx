@@ -3,15 +3,17 @@
 import { useState } from "react";
 
 // Small dependency-free charts for the ops dashboard. Conventions (per the dataviz method): one
-// series per chart in the brand teal, thin marks (≤24px) with 4px rounded data ends grown from one
+// series per chart in the brand red, thin marks (≤24px) with 4px rounded data ends grown from one
 // baseline, recessive gridlines, text in ink colors (never the series color), a per-mark hover
 // tooltip, and a "View as table" fallback so nothing is readable only visually.
 
-// Chart teal: a brighter step of the brand color (the deep brand teal reads gray at chart sizes).
-// CATEGORICAL was run through the dataviz validator (light mode): all checks pass; yellow/pink sit
-// under 3:1 vs the surface, so categorical charts always carry direct labels + a table view.
-export const SERIES = "#0d9a86";
-export const CATEGORICAL = ["#0d9a86", "#eb6834", "#4a3aa7", "#eda100", "#2a78d6", "#e87ba4"];
+// Chart red: a brighter step of the brand color (the deep brand red reads near-black at chart
+// sizes). CATEGORICAL was run through the dataviz validator (light mode): all checks pass;
+// yellow/pink sit under 3:1 vs the surface, so categorical charts always carry direct labels + a
+// table view. Kept distinct from OUTCOME_COLORS.ESCALATED (amber, not red) below so a brand-colored
+// series never gets misread as a bad-outcome signal.
+export const SERIES = "#e0201a";
+export const CATEGORICAL = ["#e0201a", "#eb6834", "#4a3aa7", "#eda100", "#2a78d6", "#e87ba4"];
 
 export interface Datum {
   label: string;
@@ -160,12 +162,13 @@ function TableView({ headers, rows }: { headers: string[]; rows: string[][] }) {
   );
 }
 
-// Outcome state colors — reserved for status, always paired with a text label.
+// Outcome state colors — reserved for status, always paired with a text label. ESCALATED is amber
+// (not red) so it never reads as the brand series color in the same chart.
 export const OUTCOME_COLORS = {
   RESOLVED: "#16a34a",
-  ESCALATED: "#dc2626",
+  ESCALATED: "#d97706",
   CALLBACK: "#8b5cf6",
-  ABANDONED: "#f59e0b",
+  ABANDONED: "#eab308",
   IN_PROGRESS: "#3b82f6",
 } as const;
 
@@ -175,10 +178,10 @@ export function Gauge({ value, color, caption, description }: { value: number | 
   const r = 70;
   const circumference = Math.PI * r;
   const pct = value === null ? 0 : Math.max(0, Math.min(1, value));
-  const label = value === null ? "—" : `${(pct * 100).toFixed(1)}%`;
+  const label = value === null ? "-" : `${(pct * 100).toFixed(1)}%`;
   return (
     <div className="flex flex-col items-center text-center">
-      <svg viewBox="0 0 180 100" className="w-48" role="img" aria-label={`${label} — ${caption}`}>
+      <svg viewBox="0 0 180 100" className="w-48" role="img" aria-label={`${label}, ${caption}`}>
         <path d="M20 90 A70 70 0 0 1 160 90" fill="none" stroke="#e5e7eb" strokeWidth="14" strokeLinecap="round" />
         {pct > 0 && (
           <path

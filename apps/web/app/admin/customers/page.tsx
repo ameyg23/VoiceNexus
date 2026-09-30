@@ -4,9 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchCustomers, type CustomerSummary } from "../../../lib/api";
 import { AdminShell, Card, EmptyState, ErrorNote } from "../../../components/AdminShell";
-import { Badge } from "../../../components/Badge";
 import { SearchIcon } from "../../../components/icons";
-import { MFA_LABELS, formatDateTime, formatMoney } from "../../../lib/format";
+import { formatDateTime, formatMoney } from "../../../lib/format";
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -28,7 +27,7 @@ export default function CustomersPage() {
   }, [customers, q]);
 
   return (
-    <AdminShell title="Customers" subtitle="Accounts, verification setup, and call history.">
+    <AdminShell title="Customers" subtitle="Accounts, plans, and call history.">
       <ErrorNote error={error} />
       <Card>
         <label className="relative mb-4 block max-w-sm">
@@ -52,7 +51,6 @@ export default function CustomersPage() {
                   <th className="py-3 pr-4">Customer</th>
                   <th className="py-3 pr-4">BAN</th>
                   <th className="py-3 pr-4">Phone</th>
-                  <th className="py-3 pr-4">Verification</th>
                   <th className="py-3 pr-4">Plan</th>
                   <th className="py-3 pr-4 text-right">Balance</th>
                   <th className="py-3 pr-4 text-right">Calls</th>
@@ -63,15 +61,14 @@ export default function CustomersPage() {
                 {filtered.map((c) => (
                   <tr key={c.id} onClick={() => router.push(`/admin/customers/${c.id}`)} className="cursor-pointer border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 pr-4">
-                      <p className="font-semibold text-gray-900">{c.name}</p>
+                      <p className="font-semibold text-gray-900">
+                        {c.name}
+                        {c.hasPortalAccount && <span className="ml-2 text-xs font-normal text-gray-500">portal</span>}
+                      </p>
                       <p className="text-xs text-gray-500">{c.email}</p>
                     </td>
                     <td className="py-3 pr-4 text-gray-600 tabular-nums">{c.ban}</td>
                     <td className="py-3 pr-4 text-gray-600 tabular-nums">{c.phoneNumber}</td>
-                    <td className="py-3 pr-4">
-                      <Badge tone={c.mfaMethod === "NONE" ? "neutral" : "info"}>{MFA_LABELS[c.mfaMethod]}</Badge>
-                      {c.hasPortalAccount && <span className="ml-2 text-xs text-gray-500">portal</span>}
-                    </td>
                     <td className="py-3 pr-4 text-gray-600">{c.planName}</td>
                     <td className="py-3 pr-4 text-right tabular-nums">
                       <span className="text-gray-900">{formatMoney(c.currentBalance)}</span>

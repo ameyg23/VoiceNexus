@@ -25,9 +25,17 @@ export function AdminShell({
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     employeeMe()
-      .then(({ employee }) => setEmployee(employee))
-      .catch(() => router.replace("/login"));
+      .then(({ employee }) => {
+        if (!cancelled) setEmployee(employee);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/login");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function handleLogout() {
@@ -44,12 +52,12 @@ export function AdminShell({
       <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} open={menuOpen} onClose={() => setMenuOpen(false)} />
       {menuOpen && <div className="fixed inset-0 z-30 bg-gray-900/30 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
-          <button onClick={() => setMenuOpen(true)} className="rounded-lg p-2 text-gray-600 hover:bg-gray-100" aria-label="Open menu">
+        <header className="sticky top-0 z-20 flex items-center gap-3 bg-ink-950 px-4 py-3 lg:hidden">
+          <button onClick={() => setMenuOpen(true)} className="rounded-lg p-2 text-gray-300 hover:bg-white/10 hover:text-white" aria-label="Open menu">
             <MenuIcon className="h-5 w-5" />
           </button>
           <LogoMark className="h-6 w-6" />
-          <span className="font-bold text-gray-900">VoiceNexus</span>
+          <span className="font-bold text-white">VoiceNexus</span>
         </header>
       <main className="mx-auto min-w-0 max-w-[1400px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">

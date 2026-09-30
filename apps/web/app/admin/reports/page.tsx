@@ -95,17 +95,17 @@ export default function ReportsPage() {
                   { label: "Escalation volume", value: String(data.kpis.escalated), hint: `${formatRate(data.kpis.transferRate)} of calls` },
                   {
                     label: "AI context handoff",
-                    value: data.kpis.handoffs.total ? percent(data.kpis.handoffs.withFullContext, data.kpis.handoffs.total) : "—",
+                    value: data.kpis.handoffs.total ? percent(data.kpis.handoffs.withFullContext, data.kpis.handoffs.total) : "-",
                     hint: "Verified + intent captured",
                   },
                   { label: "Cost per call", value: formatMoney(data.kpis.costPerCall), hint: "Blended, your rates" },
-                  { label: "Care CSAT", value: data.kpis.csatAverage === null ? "—" : `${data.kpis.csatAverage}/5`, hint: `${data.kpis.csatResponses} ratings` },
+                  { label: "Care CSAT", value: data.kpis.csatAverage === null ? "-" : `${data.kpis.csatAverage}/5`, hint: `${data.kpis.csatResponses} ratings` },
                 ]}
               />
             </Card>
           </div>
 
-          <Card className="mt-6" title="Containment & Quality" subtitle="Over finished calls — calibrate targets against your own pre-VoiceNexus baseline">
+          <Card className="mt-6" title="Containment & Quality" subtitle="Over finished calls; calibrate targets against your own pre-VoiceNexus baseline">
             <Columns
               items={[
                 { label: "IVR containment", value: formatRate(data.kpis.containmentRate), hint: `${data.kpis.resolved} of ${data.kpis.finishedCalls} resolved end-to-end` },
@@ -114,7 +114,7 @@ export default function ReportsPage() {
                 { label: "Abandonment rate", value: formatRate(data.kpis.abandonmentRate), hint: `${data.kpis.abandoned} dropped` },
                 {
                   label: "Reply latency",
-                  value: data.kpis.latency.medianMs === null ? "—" : `${(data.kpis.latency.medianMs / 1000).toFixed(2)}s`,
+                  value: data.kpis.latency.medianMs === null ? "-" : `${(data.kpis.latency.medianMs / 1000).toFixed(2)}s`,
                   hint: data.kpis.latency.p90Ms === null ? "Median · target ≤ 1.0s" : `Median · p90 ${(data.kpis.latency.p90Ms / 1000).toFixed(2)}s`,
                 },
               ]}

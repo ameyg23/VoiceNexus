@@ -114,8 +114,8 @@ conversationsRouter.get("/:id", (req, res) => {
   ).map((t) => ({ ...t, timestamp: sqliteUtcToIso(t.timestamp) }));
 
   const session = db
-    .prepare(`SELECT stage, pin_attempts as pinAttempts, authenticated_at as authenticatedAt FROM auth_sessions WHERE conversation_id = @id`)
-    .get({ "@id": req.params.id }) as { stage: string; pinAttempts: number; authenticatedAt: string | null } | undefined;
+    .prepare(`SELECT stage, pin_attempts as pinAttempts, ban_attempts as banAttempts, authenticated_at as authenticatedAt FROM auth_sessions WHERE conversation_id = @id`)
+    .get({ "@id": req.params.id }) as { stage: string; pinAttempts: number; banAttempts: number; authenticatedAt: string | null } | undefined;
 
   // OTP audit trail — status/method/destination only; the code hash never leaves the server.
   const otps = (

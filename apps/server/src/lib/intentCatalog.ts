@@ -100,6 +100,13 @@ export const INTENT_CATALOG: IntentInfo[] = [
     dataShared: [],
   },
   {
+    intent: "SERVICE_AVAILABILITY",
+    label: "Service Availability",
+    description: "For callers who aren't yet a customer: asks residential or business, then a ZIP code, and checks whether Springfield Fiber serves that area. Offers to transfer to sign up if it does.",
+    examples: ["Is service available in my area?", "Do you serve my address?", "I want to sign up for internet"],
+    dataShared: [],
+  },
+  {
     intent: "AGENT_REQUEST",
     label: "Agent Request",
     description: "Transfers to a live agent with a structured handoff (identity status, intent, what was tried). Works at any point in the call.",

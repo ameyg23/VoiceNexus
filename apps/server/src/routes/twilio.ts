@@ -13,7 +13,9 @@
 //   POST /api/twilio/status       number's call status callback → finalize the conversation
 //   POST /api/twilio/recording    <Start><Recording> status callback → download the mp3
 //   POST /api/twilio/client-voice TwiML App voice URL for browser (Voice JS SDK) calls
-// Plus GET /api/twilio/token (employee-only), the Voice SDK access token for the test-call page.
+// Plus GET /api/twilio/token (employee-only, test-call page) and GET /api/twilio/customer-token
+// (customer-only, portal "Call customer care" widget) — same Voice SDK access-token shape, different
+// auth guard and JWT identity prefix; both hit the same TwiML App / client-voice webhook below.
 
 import express, { Router, type Request, type Response, type NextFunction } from "express";
 import twilio from "twilio";
@@ -22,7 +24,7 @@ import { advanceAuthSession, type TurnResult } from "../lib/authStateMachine.js"
 import { startConversation, appendTurn, endConversation, greetingText } from "../lib/conversations.js";
 import { getSettings, toSpeech } from "../lib/settings.js";
 import { saveRecording } from "../lib/recordings.js";
-import { requireEmployeeAuth } from "../lib/auth.js";
+import { requireEmployeeAuth, requireCustomerAuth } from "../lib/auth.js";
 
 const { VoiceResponse } = twilio.twiml;
 
@@ -35,7 +37,6 @@ const SPEECH_HINTS =
 // timeout + retry), so we answer within this budget and, if the turn isn't done, keep the caller on
 // the line with a short pause + <Redirect> to /pending until it is.
 const TURN_BUDGET_MS = 9000;
-const MAX_SILENT_PROMPTS = 2;
 
 function publicUrl(path: string): string {
   return `${(process.env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "")}${path}`;
@@ -72,10 +73,10 @@ function say(twiml: SayTarget, text: string) {
 
 // Speak `text` inside a <Gather> so the caller can barge in, and loop back to /gather either way
 // (actionOnEmptyResult) so silence is handled server-side too.
-function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string, silentPrompts = 0) {
+function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string) {
   const gather = twiml.gather({
     input: ["speech", "dtmf"],
-    action: publicUrl(`/api/twilio/gather?silent=${silentPrompts}`),
+    action: publicUrl("/api/twilio/gather"),
     method: "POST",
     speechTimeout: "auto",
     timeout: 6,
@@ -86,7 +87,7 @@ function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string
   say(gather, text);
 }
 
-function speakResult(res: Response, conversationId: string, result: TurnResult) {
+function speakResult(res: Response, callSid: string, conversationId: string, result: TurnResult) {
   const twiml = new VoiceResponse();
   const agentLine = getSettings().agentTransferNumber;
   if (result.transfer && agentLine) {
@@ -94,10 +95,12 @@ function speakResult(res: Response, conversationId: string, result: TurnResult) 
     say(twiml, result.aiText);
     twiml.dial({ callerId: process.env.TWILIO_CARE_LINE_NUMBER || undefined }).number(agentLine);
     endConversation(conversationId);
+    clearSilenceStreak(callSid);
   } else if (result.endCall) {
     say(twiml, result.aiText);
     twiml.hangup();
     endConversation(conversationId);
+    clearSilenceStreak(callSid);
   } else {
     promptAndListen(twiml, result.aiText);
   }
@@ -147,6 +150,16 @@ twilioRouter.post("/voice", validateTwilioSignature, async (req, res) => {
 // In-flight turns keyed by CallSid, so /pending can pick up a turn that outlived TURN_BUDGET_MS.
 const pendingTurns = new Map<string, Promise<TurnResult>>();
 
+// Consecutive-silence tracking, keyed by CallSid (user request, Sep 29: "a customer might ask 56
+// questions... before hanging up wait 5 secs because the user might ask something new"). A caller
+// who pauses to think between questions gets one more ~6s Gather cycle to speak up before the call
+// actually ends — only silence on TWO cycles in a row (no real content in between) is treated as the
+// caller genuinely being done. Reset on any real utterance; cleared wherever the call itself ends.
+const silenceStreak = new Map<string, number>();
+function clearSilenceStreak(callSid: string) {
+  silenceStreak.delete(callSid);
+}
+
 async function respondWithinBudget(res: Response, callSid: string, conversationId: string, alreadyHeld = false) {
   const turn = pendingTurns.get(callSid);
   if (!turn) {
@@ -168,7 +181,7 @@ async function respondWithinBudget(res: Response, callSid: string, conversationI
   }
 
   pendingTurns.delete(callSid);
-  speakResult(res, conversationId, outcome);
+  speakResult(res, callSid, conversationId, outcome);
 }
 
 twilioRouter.post("/gather", validateTwilioSignature, async (req, res) => {
@@ -179,17 +192,24 @@ twilioRouter.post("/gather", validateTwilioSignature, async (req, res) => {
   // `||` not `??`: Twilio can send an empty SpeechResult alongside keypad Digits.
   const utterance = String(req.body.SpeechResult || req.body.Digits || "").trim();
   if (!utterance) {
-    const silent = Number(req.query.silent ?? 0) + 1;
-    if (silent > MAX_SILENT_PROMPTS) {
-      const bye = "I haven't heard anything, so I'll end the call here. Please call back any time.";
-      appendTurn(conversationId, "AI", bye);
-      endConversation(conversationId);
-      return hangUpWith(res, bye);
+    const streak = (silenceStreak.get(callSid) ?? 0) + 1;
+    silenceStreak.set(callSid, streak);
+    if (streak === 1) {
+      // First silence: don't assume they're done — give them another ~6s cycle to jump back in with
+      // a new question (a caller can ask any number of questions one after another; a pause to think
+      // between them shouldn't end the call).
+      const twiml = new VoiceResponse();
+      promptAndListen(twiml, "Are you still there? Let me know if there's anything else I can help with.");
+      return sendTwiml(res, twiml);
     }
-    const twiml = new VoiceResponse();
-    promptAndListen(twiml, "Sorry, I didn't hear anything. Are you still there?", silent);
-    return sendTwiml(res, twiml);
+    // Silence again right after that check-in — genuinely done.
+    const bye = "Looks like you're all set. Let me know if there's anything else I can help with — thank you, and have a nice day!";
+    appendTurn(conversationId, "AI", bye);
+    endConversation(conversationId);
+    clearSilenceStreak(callSid);
+    return hangUpWith(res, bye);
   }
+  silenceStreak.delete(callSid);
 
   appendTurn(conversationId, "CUSTOMER", utterance);
   const started = Date.now();
@@ -221,6 +241,7 @@ twilioRouter.post("/status", validateTwilioSignature, (req, res) => {
   if (conversationId && FINAL_CALL_STATUSES.has(req.body.CallStatus)) {
     endConversation(conversationId);
     pendingTurns.delete(req.body.CallSid);
+    clearSilenceStreak(req.body.CallSid);
     console.log(`[twilio] ${conversationId} ended (${req.body.CallStatus})`);
   }
   res.sendStatus(204);
@@ -269,6 +290,25 @@ twilioRouter.get("/token", requireEmployeeAuth, (req, res) => {
   const { AccessToken } = twilio.jwt;
   const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, {
     identity: `employee-${req.employee!.employeeId}`,
+    ttl: 3600,
+  });
+  token.addGrant(new AccessToken.VoiceGrant({ outgoingApplicationSid: TWILIO_TWIML_APP_SID, incomingAllow: false }));
+  res.json({ token: token.toJwt(), careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null });
+});
+
+// GET /api/twilio/customer-token — same shape as /token above, for the portal's "Call customer care"
+// widget. A logged-in customer still authenticates on the call itself (BAN+PIN/OTP) exactly like any
+// other caller — being logged into the portal doesn't skip the phone-side Auth State Machine; ANI
+// stays display-only by design (ARCHITECTURE.md §18), and a WebRTC client is no different.
+twilioRouter.get("/customer-token", requireCustomerAuth, (req, res) => {
+  const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_TWIML_APP_SID } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWILIO_TWIML_APP_SID) {
+    return res.status(503).json({ error: "Voice SDK not configured — run apps/server/scripts/twilio-setup.ts first" });
+  }
+
+  const { AccessToken } = twilio.jwt;
+  const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, {
+    identity: `customer-${req.customer!.customerId}`,
     ttl: 3600,
   });
   token.addGrant(new AccessToken.VoiceGrant({ outgoingApplicationSid: TWILIO_TWIML_APP_SID, incomingAllow: false }));

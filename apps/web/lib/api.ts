@@ -46,6 +46,7 @@ export interface DemoConfig {
   assistantName: string;
   language: Language;
   recordingEnabled: boolean;
+  careLineNumber: string | null;
 }
 
 export async function fetchDemoConfig(): Promise<DemoConfig> {
@@ -208,6 +209,9 @@ export interface Escalation {
   intent: Intent | null;
   summary: string;
   attempted: string[];
+  routingCode: string | null;
+  expectedRoutingCode: string;
+  routingMatch: boolean;
   status: EscalationStatus;
   acceptedByName: string | null;
   notes: string | null;
@@ -220,7 +224,7 @@ export interface Escalation {
 export interface ConversationDetail {
   conversation: ConversationSummary;
   turns: { turnIndex: number; speaker: "AI" | "CUSTOMER"; text: string; timestamp: string; latencyMs: number | null }[];
-  authSession: { stage: AuthStage; pinAttempts: number; authenticatedAt: string | null } | null;
+  authSession: { stage: AuthStage; pinAttempts: number; banAttempts: number; authenticatedAt: string | null } | null;
   otps: { method: "EMAIL" | "SMS"; destinationMasked: string; status: string; attempts: number; createdAt: string }[];
   actions: CallAction[];
   escalation: Escalation | null;
@@ -378,6 +382,7 @@ export interface TenantSettings {
   escalateOnAgentRequest: boolean;
   unknownTurnsBeforeEscalation: number;
   agentTransferNumber: string;
+  routingCodes: { generalEnquiry: string; newCustomerResidential: string; newCustomerBusiness: string; byIntent: Partial<Record<Intent, string>> };
   intentOverrides: Record<string, { enabled: boolean; examples: string[] }>;
   costPerMinuteAutomated: number;
   costPerMinuteAgent: number;
@@ -427,6 +432,12 @@ export function updateActionStatus(id: number, status: "DONE" | "CANCELLED") {
 
 export function fetchVoiceToken() {
   return authFetch<{ token: string; careLineNumber: string | null }>("/api/twilio/token");
+}
+
+// Same shape as fetchVoiceToken, but customer-auth-gated — backs the portal's "Call customer care"
+// browser-calling widget.
+export function fetchCustomerVoiceToken() {
+  return authFetch<{ token: string; careLineNumber: string | null }>("/api/twilio/customer-token");
 }
 
 // --- Customer portal auth — separate httpOnly cookie session; unrelated to the phone-call
@@ -485,4 +496,16 @@ export function customerActivity() {
 
 export function customerMe() {
   return authFetch<{ customer: CustomerAccount }>("/api/auth/customer/me");
+}
+
+export interface PlanInfo {
+  name: string;
+  monthlyPrice: number;
+  description: string;
+}
+
+// Same catalog the phone AI offers in the PLAN_CHANGE subflow, so "view plans" in the portal
+// always matches what a call would actually offer.
+export function fetchCustomerPlans() {
+  return authFetch<{ plans: PlanInfo[] }>("/api/auth/customer/plans");
 }

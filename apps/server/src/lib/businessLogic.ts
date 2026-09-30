@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
-import type { Intent, MfaMethod } from "@voice-nexus/shared";
+import type { CustomerType, Intent, MfaMethod } from "@voice-nexus/shared";
 import { speakDate } from "./dates.js";
 
 export interface CustomerRow {
@@ -11,6 +11,7 @@ export interface CustomerRow {
   email: string;
   mfa_enabled: number;
   mfa_method: MfaMethod;
+  customer_type: CustomerType;
   current_balance: number;
   last_payment_amount: number;
   last_payment_date: string | null;
@@ -23,6 +24,7 @@ export interface CustomerRow {
   portal_password_hash: string | null;
   service_zip: string | null;
   phone_number: string;
+  mfa_phone_number: string | null;
 }
 
 export function findCustomerByBan(ban: string): CustomerRow | undefined {
@@ -42,6 +44,11 @@ export function maskEmail(email: string): string {
   if (!user || !domain) return "***";
   const visible = user.slice(0, 1);
   return `${visible}${"*".repeat(Math.max(user.length - 1, 1))}@${domain}`;
+}
+
+export function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 4 ? `***-***-${digits.slice(-4)}` : "***";
 }
 
 // Post-auth intent fulfillment (ARCHITECTURE.md §1/§11): the server decides which fields are
@@ -179,4 +186,23 @@ export function findActiveOutage(serviceZip: string | null | undefined): OutageR
   return db
     .prepare(`SELECT id, service_zip, description, eta FROM outages WHERE service_zip = @zip AND active = 1 ORDER BY id DESC LIMIT 1`)
     .get({ "@zip": serviceZip }) as OutageRow | undefined;
+}
+
+// --- Service coverage (SERVICE_AVAILABILITY, new-customer flow) ---
+
+export interface ServiceAreaRow {
+  zip: string;
+  residential_available: number;
+  business_available: number;
+}
+
+// A ZIP we have no row for is treated as not (yet) covered, rather than guessing.
+export function findServiceArea(zip: string): ServiceAreaRow | undefined {
+  return db.prepare(`SELECT * FROM service_areas WHERE zip = @zip`).get({ "@zip": zip }) as ServiceAreaRow | undefined;
+}
+
+export function isServiceAvailable(zip: string, accountType: CustomerType): boolean {
+  const area = findServiceArea(zip);
+  if (!area) return false;
+  return accountType === "BUSINESS" ? Boolean(area.business_available) : Boolean(area.residential_available);
 }

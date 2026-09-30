@@ -2,6 +2,7 @@
 // Server is the source of truth for validation; these are for compile-time safety only.
 
 export type MfaMethod = "NONE" | "EMAIL" | "SMS";
+export type CustomerType = "RESIDENTIAL" | "BUSINESS";
 
 export interface Customer {
   id: string; // e.g. CUS001
@@ -12,6 +13,8 @@ export interface Customer {
   email: string;
   mfaEnabled: boolean;
   mfaMethod: MfaMethod;
+  mfaPhoneNumber: string | null; // OTP-delivery phone once enrolled; distinct from phoneNumber (ANI)
+  customerType: CustomerType;
   currentBalance: number;
   lastPaymentAmount: number;
   lastPaymentDate: string;
@@ -116,6 +119,7 @@ export type Intent =
   | "TECH_TRIAGE"
   | "SCHEDULE_TECH"
   | "SCHEDULE_CALLBACK"
+  | "SERVICE_AVAILABILITY"
   | "AGENT_REQUEST"
   | "UNKNOWN";
 
@@ -132,6 +136,7 @@ export const ALL_INTENTS: readonly Intent[] = [
   "TECH_TRIAGE",
   "SCHEDULE_TECH",
   "SCHEDULE_CALLBACK",
+  "SERVICE_AVAILABILITY",
   "AGENT_REQUEST",
   "UNKNOWN",
 ];
@@ -139,7 +144,14 @@ export const ALL_INTENTS: readonly Intent[] = [
 export type CallActionType = "PAYMENT" | "PLAN_CHANGE" | "PAYMENT_PROMISE" | "TECH_VISIT" | "CALLBACK";
 export type CallActionStatus = "COMPLETED" | "SCHEDULED" | "DONE" | "CANCELLED";
 
-export type EscalationReason = "PIN_LOCKOUT" | "OTP_FAILED" | "VERIFICATION_FAILED" | "CALLER_REQUESTED" | "UNRESOLVED_REQUEST";
+export type EscalationReason =
+  | "PIN_LOCKOUT"
+  | "OTP_FAILED"
+  | "VERIFICATION_FAILED"
+  | "CALLER_REQUESTED"
+  | "UNRESOLVED_REQUEST"
+  | "BAN_LOOKUP_FAILED"
+  | "NEW_CUSTOMER_ENROLLMENT";
 export type EscalationStatus = "WAITING" | "ACCEPTED" | "RESOLVED";
 
 export type Language = "en-US" | "es-US" | "hi-IN";

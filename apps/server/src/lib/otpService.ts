@@ -3,8 +3,9 @@ import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import type { OtpMethod } from "@voice-nexus/shared";
 import type { CustomerRow } from "./businessLogic.js";
-import { maskEmail } from "./businessLogic.js";
+import { maskEmail, maskPhone } from "./businessLogic.js";
 import { sendOtpEmail } from "./email.js";
+import { sendOtpSms } from "./sms.js";
 
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -18,11 +19,18 @@ function generateCode(): string {
   return crypto.randomInt(100000, 999999).toString();
 }
 
-export function issueOtp(conversationId: string, customer: CustomerRow, method: OtpMethod): void {
+// `phoneOverride` is the number to text when it isn't the customer's already-enrolled
+// `mfa_phone_number` yet — the phone-enrollment upsell (authStateMachine.ts) sends the verification
+// code to the candidate number before it's persisted to the customer row. `emailOverride` is the same
+// idea for email: a caller can ask for the code at any address, not just the one on file (user
+// decision, Sep 29 — see CLAUDE.md) — never persisted to the customer row, just used for this send.
+export function issueOtp(conversationId: string, customer: CustomerRow, method: OtpMethod, phoneOverride?: string, emailOverride?: string): void {
   const code = generateCode();
   const codeHash = bcrypt.hashSync(code, 10);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60_000).toISOString();
-  const destinationMasked = method === "EMAIL" ? maskEmail(customer.email) : "***-***-" + customer.id.slice(-4);
+  const phone = phoneOverride ?? customer.mfa_phone_number ?? customer.phone_number;
+  const email = emailOverride ?? customer.email;
+  const destinationMasked = method === "EMAIL" ? maskEmail(email) : maskPhone(phone);
 
   // Invalidate any prior pending OTP for this conversation before issuing a new one.
   db.prepare(`UPDATE otps SET status = 'EXPIRED' WHERE conversation_id = @cid AND status = 'PENDING'`).run({
@@ -46,8 +54,12 @@ export function issueOtp(conversationId: string, customer: CustomerRow, method: 
   if (method === "EMAIL") {
     // Fire-and-forget so the caller hears "I've sent a code" immediately; a failed send is logged
     // in email.ts and the dev console below still has the code.
-    void sendOtpEmail(customer.email, code).then((sent) => {
-      if (sent) console.log(`[otp] emailed code to ${maskEmail(customer.email)} for ${conversationId}`);
+    void sendOtpEmail(email, code).then((sent) => {
+      if (sent) console.log(`[otp] emailed code to ${maskEmail(email)} for ${conversationId}`);
+    });
+  } else {
+    void sendOtpSms(phone, code).then((sent) => {
+      if (sent) console.log(`[otp] texted code to ${maskPhone(phone)} for ${conversationId}`);
     });
   }
 

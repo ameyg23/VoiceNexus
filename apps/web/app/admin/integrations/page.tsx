@@ -16,7 +16,7 @@ export default function IntegrationsPage() {
   }, []);
 
   return (
-    <AdminShell title="Integrations" subtitle="External services this deployment uses. Secrets never leave the server — this shows configured / not configured only.">
+    <AdminShell title="Integrations" subtitle="External services this deployment uses. Secrets never leave the server; this shows configured / not configured only.">
       <ErrorNote error={error} />
       {status && (
         <div className="grid gap-4 md:grid-cols-2">
@@ -34,8 +34,8 @@ export default function IntegrationsPage() {
             role="Delivers Email-OTP codes."
             ok={status.resend.configured}
             rows={[
-              ["From", status.resend.fromEmail ?? "—"],
-              ["Fallback", "Dev OTP console (demo mode)"],
+              ["From", status.resend.fromEmail ?? "-"],
+              ["Fallback", "Dev-only OTP reveal on Demo Call / Call Detail (demo mode)"],
             ]}
           />
           <IntegrationCard
@@ -44,7 +44,7 @@ export default function IntegrationsPage() {
             ok={status.twilio.configured && Boolean(status.twilio.publicBaseUrl)}
             warn={status.twilio.configured && !status.twilio.publicBaseUrl ? "Credentials set, no public webhook URL yet" : undefined}
             rows={[
-              ["Care line", status.twilio.careLineNumber ?? "—"],
+              ["Care line", status.twilio.careLineNumber ?? "-"],
               ["Webhook base", status.twilio.publicBaseUrl ?? "Not set (PUBLIC_BASE_URL)"],
               ["Browser test calls", status.twilio.voiceSdkConfigured ? "Configured" : "Not set up (run twilio:setup)"],
             ]}

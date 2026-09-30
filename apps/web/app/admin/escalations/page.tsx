@@ -58,7 +58,7 @@ export default function EscalationsPage() {
               ))}
             </div>
           </div>
-          <button onClick={load} className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
+          <button onClick={load} className="btn btn-secondary px-4 py-2 text-sm">
             ↻ Refresh
           </button>
         </div>
@@ -77,6 +77,7 @@ export default function EscalationsPage() {
                   <th className="py-3 pr-4">Intent</th>
                   <th className="py-3 pr-4">Wait time</th>
                   <th className="py-3 pr-4">Escalation reason</th>
+                  <th className="py-3 pr-4">Routing code</th>
                   <th className="py-3 pr-4">Identity</th>
                   <th className="py-3 pr-4 text-right">Actions</th>
                 </tr>
@@ -92,6 +93,7 @@ export default function EscalationsPage() {
                         <WaitPill e={e} now={now} />
                       </td>
                       <td className="py-4 pr-4 text-gray-700">{ESCALATION_REASON_LABELS[e.reason] ?? e.reason}</td>
+                      <td className="py-4 pr-4 font-mono text-gray-700">{e.routingCode ?? "-"}</td>
                       <td className="py-4 pr-4">
                         <Badge tone={e.verified ? "success" : "warning"}>{e.verified ? "Verified" : "Not verified"}</Badge>
                       </td>
@@ -105,7 +107,7 @@ export default function EscalationsPage() {
                     </tr>
                     {open === e.id && (
                       <tr className="border-b border-gray-100 bg-gray-50/60">
-                        <td colSpan={7} className="px-4 py-5">
+                        <td colSpan={8} className="px-4 py-5">
                           <Handoff e={e} onChange={load} onError={setError} />
                         </td>
                       </tr>
@@ -124,7 +126,7 @@ export default function EscalationsPage() {
 
 // Wait time since the handoff; green under 1 minute, amber under 3, red beyond — with the time as text.
 function WaitPill({ e, now }: { e: Escalation; now: number }) {
-  if (e.status !== "WAITING") return <span className="text-gray-400">—</span>;
+  if (e.status !== "WAITING") return <span className="text-gray-400">-</span>;
   const secs = Math.max(0, Math.round((now - new Date(e.createdAt).getTime()) / 1000));
   const tone = secs < 60 ? "bg-green-50 text-green-700" : secs < 180 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700";
   const text = secs >= 3600 ? `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m` : `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
@@ -144,7 +146,7 @@ function AcceptButton({ id, onDone, onError }: { id: number; onDone: () => void;
           .catch((err) => onError(err instanceof Error ? err.message : String(err)))
           .finally(() => setBusy(false));
       }}
-      className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+      className="btn btn-primary px-5 py-2 text-sm"
     >
       Accept
     </button>
@@ -200,7 +202,7 @@ function Handoff({ e, onChange, onError }: { e: Escalation; onChange: () => void
                   .catch((err) => onError(err instanceof Error ? err.message : String(err)))
                   .finally(() => setBusy(false));
               }}
-              className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-100 disabled:opacity-50"
+              className="btn btn-secondary mt-2 w-full px-4 py-2 text-sm"
             >
               Mark resolved
             </button>
@@ -209,7 +211,7 @@ function Handoff({ e, onChange, onError }: { e: Escalation; onChange: () => void
           <p className="text-sm text-gray-600">
             Resolved {formatDateTime(e.resolvedAt)}
             {e.acceptedByName ? ` by ${e.acceptedByName}` : ""}
-            {e.notes ? ` — “${e.notes}”` : ""}
+            {e.notes ? ` ("${e.notes}")` : ""}
           </p>
         )}
       </div>

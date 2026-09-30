@@ -1,14 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Intent } from "@voice-nexus/shared";
+import { ALL_INTENTS } from "@voice-nexus/shared";
 import { employeeMe, employeeSignup, fetchSettings, saveSettings, type EmployeeAccount, type TenantSettings } from "../../../lib/api";
 import { AdminShell, Card, ErrorNote } from "../../../components/AdminShell";
 import { Badge } from "../../../components/Badge";
+import { INTENT_LABELS } from "../../../lib/format";
 
 // Tenant configuration for the care line (PRD VN-7 brand voice / language / pronunciation, VN-9
 // greeting / hold / close prompts, compliance disclosures, escalation rules, cost model). Everything
 // is validated server-side against the same schema the call engine reads. Intent on/off and example
-// utterances live on the Intents page.
+// utterances are code-defined, not editable from any admin UI (see CLAUDE.md "Key decisions" —
+// intents are deliberately kept out of the ops UI).
+
+const ROUTABLE_INTENTS = ALL_INTENTS.filter((i) => i !== "UNKNOWN");
 const PHONE_VOICES: Record<TenantSettings["language"], { value: string; label: string }[]> = {
   "en-US": [
     { value: "Polly.Joanna", label: "Joanna (US English, female)" },
@@ -75,7 +81,7 @@ export default function SettingsPage() {
         form && (
           <div className="flex items-center gap-3">
             {savedAt && <span className="text-xs text-gray-500">Saved {savedAt} · applies to new calls</span>}
-            <button onClick={() => void save()} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-60">
+            <button onClick={() => void save()} disabled={saving} className="btn btn-primary px-4 py-2 text-sm">
               {saving ? "Saving…" : "Save changes"}
             </button>
           </div>
@@ -115,7 +121,7 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="Pronunciation overrides" subtitle="Applied to what's spoken only — transcripts keep the real text">
+          <Card title="Pronunciation overrides" subtitle="Applied to what's spoken only; transcripts keep the real text">
             <PronunciationEditor rows={form.pronunciations} onChange={(rows) => set("pronunciations", rows)} />
           </Card>
 
@@ -168,6 +174,45 @@ export default function SettingsPage() {
                 value={form.agentTransferNumber}
                 onChange={(v) => set("agentTransferNumber", v)}
               />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Routing codes</p>
+                <p className="mt-1 text-xs text-gray-500">Spoken before the call ends on every transfer; there's no live agent queue in this deployment, so this just announces which one a real transfer would have gone to.</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                  <TextField
+                    label="General enquiry"
+                    hint="Verification lockouts, agent requests, unresolved requests"
+                    value={form.routingCodes.generalEnquiry}
+                    onChange={(v) => set("routingCodes", { ...form.routingCodes, generalEnquiry: v })}
+                  />
+                  <TextField
+                    label="New customer, residential"
+                    value={form.routingCodes.newCustomerResidential}
+                    onChange={(v) => set("routingCodes", { ...form.routingCodes, newCustomerResidential: v })}
+                  />
+                  <TextField
+                    label="New customer, business"
+                    value={form.routingCodes.newCustomerBusiness}
+                    onChange={(v) => set("routingCodes", { ...form.routingCodes, newCustomerBusiness: v })}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700">Routing codes by topic</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  What the caller was asking about decides which code is spoken on transfer. Anything not listed here (or a call where no
+                  clear topic was ever captured) falls back to the general enquiry code above.
+                </p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                  {ROUTABLE_INTENTS.map((intent) => (
+                    <TextField
+                      key={intent}
+                      label={INTENT_LABELS[intent] ?? intent}
+                      value={form.routingCodes.byIntent[intent] ?? ""}
+                      onChange={(v) => set("routingCodes", { ...form.routingCodes, byIntent: { ...form.routingCodes.byIntent, [intent]: v } })}
+                    />
+                  ))}
+                </div>
+              </div>
               <Toggle label="Ask for a 1–5 satisfaction rating at the end of automated calls" checked={form.csatSurveyEnabled} onChange={(v) => set("csatSurveyEnabled", v)} />
             </div>
           </Card>
@@ -187,17 +232,17 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-400">Loading…</p>
             )}
           </Card>
-          <Card title="Add an admin" subtitle="The public sign-up page creates customer accounts — admin accounts are added here." className="lg:col-span-2">
+          <Card title="Add an admin" subtitle="The public sign-up page creates customer accounts; admin accounts are added here." className="lg:col-span-2">
             <AddAdminForm />
           </Card>
-          <Card title="Caller verification rules" subtitle="Fixed in code — identity before action" className="lg:col-span-2">
+          <Card title="Caller verification rules" subtitle="Fixed in code: identity before action" className="lg:col-span-2">
             <Rows
               rows={[
-                ["Caller ID (ANI)", "Captured for display only — never grants access"],
+                ["Caller ID (ANI)", "Captured for display only, never grants access"],
                 ["Account lookup", "Caller must give a valid 6-digit BAN"],
                 ["PIN", "4 digits, 3 attempts per call, then escalate to an agent"],
                 ["One-time code", "6 digits by email or SMS, expires after 5 minutes, 3 attempts, “resend” issues a new code"],
-                ["Data release", "Only the fields the detected intent needs, and only after verification (see Intents)"],
+                ["Data release", "Only the fields the detected intent needs, and only after verification"],
                 ["Irreversible actions", "Payments, plan changes and bookings are read back and need an explicit yes"],
                 ["AI role", "Understands and phrases language; the server makes every verification and account decision"],
               ]}
@@ -215,11 +260,11 @@ function readableError(err: unknown): string {
     const fields = JSON.parse(msg.slice(msg.indexOf("{")))?.error?.fieldErrors as Record<string, string[]> | undefined;
     if (fields && Object.keys(fields).length) {
       return `Couldn't save: ${Object.entries(fields)
-        .map(([k, v]) => `${k} — ${v.join(", ")}`)
+        .map(([k, v]) => `${k}: ${v.join(", ")}`)
         .join("; ")}`;
     }
   } catch {
-    // not a validation error — fall through
+    // not a validation error - fall through
   }
   return `Couldn't save: ${msg}`;
 }
@@ -306,7 +351,7 @@ function PronunciationEditor({ rows, onChange }: { rows: TenantSettings["pronunc
             setFrom("");
             setTo("");
           }}
-          className="shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="btn btn-secondary shrink-0 px-3 py-2 text-sm"
         >
           Add
         </button>
@@ -349,7 +394,7 @@ function AddAdminForm() {
       setPassword("");
     } catch (err) {
       const msg = String(err);
-      setStatus({ ok: false, text: msg.includes("409") ? "An account with that email already exists." : msg.includes("400") ? "Check the details — password needs 8+ characters." : "Couldn't add the admin." });
+      setStatus({ ok: false, text: msg.includes("409") ? "An account with that email already exists." : msg.includes("400") ? "Check the details: password needs 8+ characters." : "Couldn't add the admin." });
     } finally {
       setSaving(false);
     }
@@ -369,7 +414,7 @@ function AddAdminForm() {
         <span className="mb-1 block text-gray-600">Temporary password</span>
         <input type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
       </label>
-      <button type="submit" disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+      <button type="submit" disabled={saving} className="btn btn-primary px-4 py-2 text-sm">
         {saving ? "Adding…" : "Add admin"}
       </button>
       {status && <p className={`text-sm sm:col-span-4 ${status.ok ? "text-green-700" : "text-red-600"}`}>{status.text}</p>}

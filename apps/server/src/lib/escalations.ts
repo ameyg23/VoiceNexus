@@ -13,6 +13,8 @@ const REASON_TEXT: Record<EscalationReason, string> = {
   VERIFICATION_FAILED: "Caller couldn't be verified",
   CALLER_REQUESTED: "Caller asked for a live agent",
   UNRESOLVED_REQUEST: "Assistant couldn't resolve the request in-flow",
+  BAN_LOOKUP_FAILED: "Caller couldn't be identified: 3 account numbers not on file",
+  NEW_CUSTOMER_ENROLLMENT: "New (not yet a customer) caller wants to sign up",
 };
 
 interface ConversationFacts {
@@ -27,7 +29,7 @@ interface ConversationFacts {
   pin_attempts: number | null;
 }
 
-export function createEscalation(conversationId: string, reason: EscalationReason): void {
+export function createEscalation(conversationId: string, reason: EscalationReason, routingCode: string | null = null): void {
   const existing = db.prepare(`SELECT id FROM escalations WHERE conversation_id = @cid`).get({ "@cid": conversationId });
   if (existing) return;
 
@@ -68,8 +70,8 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
     .join(" ");
 
   db.prepare(
-    `INSERT INTO escalations (conversation_id, customer_id, verified, reason, intent, summary, attempted)
-     VALUES (@cid, @custId, @verified, @reason, @intent, @summary, @attempted)`
+    `INSERT INTO escalations (conversation_id, customer_id, verified, reason, intent, summary, attempted, routing_code)
+     VALUES (@cid, @custId, @verified, @reason, @intent, @summary, @attempted, @routingCode)`
   ).run({
     "@cid": conversationId,
     "@custId": customerId,
@@ -78,6 +80,7 @@ export function createEscalation(conversationId: string, reason: EscalationReaso
     "@intent": c.detected_intent,
     "@summary": summary,
     "@attempted": JSON.stringify(attempted),
+    "@routingCode": routingCode,
   });
 }
 

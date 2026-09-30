@@ -16,16 +16,28 @@ import { ALL_INTENTS, type Intent } from "@voice-nexus/shared";
 // too low for a multi-turn phone call). Discovered Thu while load-testing (CLAUDE.md note).
 export const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const CALL_TIMEOUT_MS = 10000;
+// Latency tuning (Sep 29): empirically measured against the real free-tier endpoint before touching
+// these — a single call floors at ~1.3s and ranges up to ~5s purely from free-tier network/inference
+// jitter (confirmed via repeated timed curl calls); neither `thinkingConfig.thinkingBudget: 0` nor a
+// `maxOutputTokens` cap moved that floor (this model already returns short output on its own), so
+// there's no per-call speed lever left to pull here — see CLAUDE.md for the full writeup. What IS a
+// real lever: bounding the WORST case. A stuck call previously could eat up to 10s, retry after a
+// 1.2s pause, then eat another 10s — 21.2s for one extractor/classifier/phraser call, and an
+// authenticated data-query turn makes two of these in sequence (classify, then phrase). Tightened
+// both knobs so a hang fails over to the deterministic fallback much sooner instead of compounding.
+const CALL_TIMEOUT_MS = 6000;
 
 const MAX_ATTEMPTS = 2;
-const RETRY_DELAY_MS = 1200;
+const RETRY_DELAY_MS = 400;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callGemini(systemInstruction: string, userText: string, responseSchema: object): Promise<any | null> {
+// `maxOutputTokens` is a defensive cap, not a measured speedup (see note above) — extraction/
+// classification only ever needs a few tokens of JSON, phrasing/translation a couple of sentences;
+// capping guards the rare pathological long generation without touching normal-case latency.
+async function callGemini(systemInstruction: string, userText: string, responseSchema: object, maxOutputTokens = 40): Promise<any | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.warn("[gemini] GEMINI_API_KEY not set — skipping AI call, caller will use fallback");
@@ -44,6 +56,7 @@ async function callGemini(systemInstruction: string, userText: string, responseS
             temperature: 0,
             responseMimeType: "application/json",
             responseSchema,
+            maxOutputTokens,
           },
         }),
         signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
@@ -137,6 +150,7 @@ const INTENT_DESCRIPTIONS: Record<Intent, string> = {
   TECH_TRIAGE: "reporting a technical problem (no internet, slow, Wi-Fi dropping, TV not working)",
   SCHEDULE_TECH: "explicitly wants a technician visit / someone to come out",
   SCHEDULE_CALLBACK: "wants someone to call them back later",
+  SERVICE_AVAILABILITY: "not yet a customer, asking whether Springfield Fiber service is available in their area, or wants to sign up",
   AGENT_REQUEST: "wants to speak to a human / live agent / representative",
   UNKNOWN: "anything else, small talk, or unclear",
 };
@@ -220,7 +234,8 @@ export async function phraseResponseAI(instruction: string, data: unknown, style
       `value is null or missing, do not mention that field at all.`,
     `Instruction: ${instruction}
 Data: ${JSON.stringify(data)}`,
-    { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+    { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    150
   );
 
   return typeof result?.text === "string" && result.text.trim() ? result.text.trim() : null;
@@ -234,7 +249,8 @@ export async function translateAI(text: string, languageName: string): Promise<s
     `Translate this phone assistant's spoken reply into natural, polite ${languageName}. Keep every number, ` +
       `amount, date, account number, plan name and brand name exactly as written. Output only the translation.`,
     text,
-    { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+    { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    200
   );
   return typeof result?.text === "string" && result.text.trim() ? result.text.trim() : null;
 }

@@ -31,8 +31,8 @@ export default function SignupPage() {
     } catch (err) {
       const msg = String(err);
       if (msg.includes("409")) setError("An account with that email already exists. Try signing in instead.");
-      else if (msg.includes("400")) setError("Please check your details — the password needs at least 8 characters.");
-      else setError("Couldn't create your account right now — please try again.");
+      else if (msg.includes("400")) setError("Please check your details. The password needs at least 8 characters.");
+      else setError("Couldn't create your account right now. Please try again.");
       setLoading(false);
     }
   }

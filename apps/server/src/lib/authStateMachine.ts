@@ -8,18 +8,21 @@
 // The AI only reads language in and phrases language out; every decision here is code.
 
 import { db } from "@voice-nexus/db";
-import type { AuthStage, EscalationReason, Intent } from "@voice-nexus/shared";
+import type { AuthStage, CustomerType, EscalationReason, Intent } from "@voice-nexus/shared";
 import {
   extractBan,
   extractPin,
   extractOtp,
+  extractZip,
+  parseCustomerKind,
+  parseAccountType,
+  SWITCH_ACCOUNT_RE,
   classifyIntent,
   parseYesNo,
   isCancel,
   extractDate,
   extractPlan,
   extractRating,
-  menuPrompt,
 } from "./extraction.js";
 import {
   findCustomerByBan,
@@ -31,22 +34,34 @@ import {
   applyPlanChange,
   applyPayment,
   findActiveOutage,
+  isServiceAvailable,
   type CustomerRow,
 } from "./businessLogic.js";
 import { issueOtp, verifyOtp, getDevOtp } from "./otpService.js";
 import { phraseResponseAI, translateAI, type VoiceStyle } from "./aiEngine.js";
-import { getSettings, fillTemplate, isIntentEnabled, LANGUAGE_NAMES, type TenantSettings } from "./settings.js";
+import { getSettings, fillTemplate, isIntentEnabled, routingCodeForIntent, LANGUAGE_NAMES, type TenantSettings } from "./settings.js";
 import { recordAction } from "./actions.js";
 import { createEscalation } from "./escalations.js";
 import { WINDOW_LABELS, addDays, daysBetween, fromIsoDate, parseSpokenDate, parseWindow, speakDate, toIsoDate, todayLocal, type TimeWindow } from "./dates.js";
 
 const PIN_MAX_ATTEMPTS = 3;
+const BAN_MAX_ATTEMPTS = 3;
 const PROMISE_MAX_DAYS = 14;
 const TECH_MAX_DAYS = 7;
 const CALLBACK_MAX_DAYS = 7;
 const ANYTHING_ELSE = "Is there anything else I can help you with?";
+// One retry before giving up on classifying the caller's opening request and moving on to
+// identifying them anyway ("if not clear, ask again; once clear, proceed").
+const INTENT_RETRY_LIMIT = 1;
 
 type Subflow =
+  | { type: "CUSTOMER_KIND" }
+  | { type: "ACCOUNT_TYPE"; forNew: boolean }
+  | { type: "NEW_CUSTOMER_ZIP"; accountType: CustomerType }
+  | { type: "NEW_CUSTOMER_OFFER"; accountType: CustomerType }
+  | { type: "EXISTING_SERVICE_ZIP" }
+  | { type: "CONFIRM_BAN"; ban: string }
+  | { type: "CONFIRM_PIN"; pin: string }
   | { type: "CONFIRM_PAYMENT"; amount: number }
   | { type: "PLAN_CHANGE"; step: "CHOOSE" }
   | { type: "PLAN_CHANGE"; step: "CONFIRM"; plan: string }
@@ -67,6 +82,7 @@ interface AuthSessionRow {
   stage: AuthStage;
   customer_id: string | null;
   pin_attempts: number;
+  ban_attempts: number;
   authenticated_at: string | null;
   subflow: string | null;
   unknown_streak: number;
@@ -195,6 +211,11 @@ function phoneEnding(ani: string): string {
   return digits.length >= 4 ? `the number ending in ${digits.slice(-4).split("").join(" ")}` : "the number you're calling from";
 }
 
+// Read back digit-by-digit ("3 0 1 4") rather than as a number ("three thousand fourteen").
+function spokenDigits(s: string): string {
+  return s.replace(/\D/g, "").split("").join(" ");
+}
+
 // ---------- entry point ----------
 
 const BARE_NO_RE = /^\s*(no|nope|nah|neither|none of them|no thanks)\b[.!]?\s*$/i;
@@ -218,8 +239,11 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
 
   if (session.stage === "FAILED") return escalationReply(ctx, "VERIFICATION_FAILED");
 
-  // Escalation rule: asking for a person always works, at any point (except while rating the call).
-  if (AGENT_RE.test(utterance) && subflow?.type !== "CSAT") {
+  // Escalation rule: asking for a person always works, at any point — including mid-CSAT-survey, since
+  // a caller who changes their mind after declining ("actually, transfer me") is a real, natural case
+  // (found live, Sep 29) and the old CSAT carve-out here silently swallowed it: the CSAT handler below
+  // unconditionally ends the call on any unrecognized reply, rating or not, so the request just vanished.
+  if (AGENT_RE.test(utterance)) {
     noteIntent(ctx.conversationId, "AGENT_REQUEST");
     return agentRequested(ctx);
   }
@@ -235,40 +259,41 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
       noteIntent(ctx.conversationId, intent);
       if (intent === "AGENT_REQUEST") return agentRequested(ctx);
       if (intent === "SCHEDULE_CALLBACK") return startCallback(ctx, utterance); // needs no account access
+
+      if (intent === "UNKNOWN") {
+        const streak = session.unknown_streak + 1;
+        setUnknownStreak(ctx.conversationId, streak);
+        if (streak <= INTENT_RETRY_LIMIT) return reply(ctx, "Sorry, I didn't quite catch that. What can I help you with today?");
+        // Gave it a retry and still can't tell — move on and identify the caller anyway.
+      } else {
+        setUnknownStreak(ctx.conversationId, 0);
+      }
+
       setStage(ctx.conversationId, "AWAITING_BAN");
+      setSubflow(ctx.conversationId, { type: "CUSTOMER_KIND" });
       const ack = intent !== "UNKNOWN" && isIntentEnabled(intent, settings) ? "I can help with that. " : "";
-      return reply(ctx, `${ack}First, to pull up your account, can you tell me your account number? It's the BAN on your bill.`);
+      return reply(ctx, `${ack}First, are you an existing Springfield Fiber customer, or a new customer?`);
     }
 
     case "AWAITING_BAN": {
-      const ban = await extractBan(utterance);
-      if (!ban) return reply(ctx, "I didn't catch an account number. Could you say it again? It's six digits, and you can also key it in.");
-
-      db.prepare(`UPDATE conversations SET ban_provided = @ban WHERE id = @cid`).run({ "@ban": ban, "@cid": ctx.conversationId });
-      const customer = findCustomerByBan(ban);
-      if (!customer) return reply(ctx, "I couldn't find an account with that number. Could you double-check it and try again?");
-
-      db.prepare(`UPDATE auth_sessions SET customer_id = @custId WHERE conversation_id = @cid`).run({ "@custId": customer.id, "@cid": ctx.conversationId });
-      return startCredentialStage(ctx, customer);
+      const extracted = await extractBan(utterance);
+      if (!extracted) return reply(ctx, "I didn't catch an account number. Could you say it again? It's six digits, and you can also key it in.");
+      if (!extracted.confident) {
+        setSubflow(ctx.conversationId, { type: "CONFIRM_BAN", ban: extracted.value });
+        return reply(ctx, `Just to confirm, your account number is ${spokenDigits(extracted.value)}. Is that right?`);
+      }
+      return lookupBan(ctx, extracted.value);
     }
 
     case "AWAITING_PIN": {
       const customer = requireCustomer(session);
-      const pin = await extractPin(utterance);
-      if (!pin) return reply(ctx, "Sorry, I didn't catch a PIN. Could you say your 4-digit PIN again?");
-
-      if (verifyPin(customer, pin)) {
-        markAuthenticated(ctx.conversationId, customer.id, "PIN");
-        return afterVerified(ctx);
+      const extracted = await extractPin(utterance);
+      if (!extracted) return reply(ctx, "Sorry, I didn't catch a PIN. Could you say your 4-digit PIN again?");
+      if (!extracted.confident) {
+        setSubflow(ctx.conversationId, { type: "CONFIRM_PIN", pin: extracted.value });
+        return reply(ctx, `Just to confirm, your PIN is ${spokenDigits(extracted.value)}. Is that right?`);
       }
-
-      const attempts = session.pin_attempts + 1;
-      db.prepare(`UPDATE auth_sessions SET pin_attempts = @a WHERE conversation_id = @cid`).run({ "@a": attempts, "@cid": ctx.conversationId });
-      if (attempts >= PIN_MAX_ATTEMPTS) {
-        markFailed(ctx.conversationId);
-        return escalationReply(ctx, "PIN_LOCKOUT");
-      }
-      return reply(ctx, `That PIN doesn't match what we have on file. You have ${PIN_MAX_ATTEMPTS - attempts} attempt${PIN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Please try again.`);
+      return verifyPinTurn(ctx, customer, extracted.value);
     }
 
     case "AWAITING_OTP": {
@@ -297,6 +322,9 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
     }
 
     case "AUTHENTICATED": {
+      // "Wrong account, let me give you a different one" — re-verify against a new BAN/PIN without
+      // ending the call. Checked before intent classification so it can't be misread as some other ask.
+      if (SWITCH_ACCOUNT_RE.test(utterance)) return switchAccount(ctx);
       const intent = await classify(ctx);
       // "No, that's it" in answer to "Is there anything else?" means the caller is done.
       if (intent === "UNKNOWN" && lastAiAskedAnythingElse(ctx.conversationId) && (await parseYesNo(utterance, ANYTHING_ELSE)) === "NO") {
@@ -307,21 +335,69 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
   }
 }
 
+// ---------- BAN / PIN verification (shared by the direct path and the confirm-if-unclear subflow) ----------
+
+function lookupBan(ctx: Ctx, ban: string): TurnResult {
+  db.prepare(`UPDATE conversations SET ban_provided = @ban WHERE id = @cid`).run({ "@ban": ban, "@cid": ctx.conversationId });
+  const customer = findCustomerByBan(ban);
+  if (!customer) {
+    const session = loadSession(ctx.conversationId);
+    const attempts = session.ban_attempts + 1;
+    db.prepare(`UPDATE auth_sessions SET ban_attempts = @a WHERE conversation_id = @cid`).run({ "@a": attempts, "@cid": ctx.conversationId });
+    if (attempts >= BAN_MAX_ATTEMPTS) {
+      markFailed(ctx.conversationId);
+      return escalationReply(ctx, "BAN_LOOKUP_FAILED");
+    }
+    return reply(
+      ctx,
+      `I couldn't find an account with that number. You have ${BAN_MAX_ATTEMPTS - attempts} attempt${BAN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left — could you double-check it and try again?`
+    );
+  }
+  db.prepare(`UPDATE auth_sessions SET customer_id = @custId WHERE conversation_id = @cid`).run({ "@custId": customer.id, "@cid": ctx.conversationId });
+  return startCredentialStage(ctx, customer);
+}
+
+async function verifyPinTurn(ctx: Ctx, customer: CustomerRow, pin: string): Promise<TurnResult> {
+  if (verifyPin(customer, pin)) {
+    markAuthenticated(ctx.conversationId, customer.id, "PIN");
+    return afterVerified(ctx);
+  }
+  const session = loadSession(ctx.conversationId);
+  const attempts = session.pin_attempts + 1;
+  db.prepare(`UPDATE auth_sessions SET pin_attempts = @a WHERE conversation_id = @cid`).run({ "@a": attempts, "@cid": ctx.conversationId });
+  if (attempts >= PIN_MAX_ATTEMPTS) {
+    markFailed(ctx.conversationId);
+    return escalationReply(ctx, "PIN_LOCKOUT");
+  }
+  return reply(ctx, `That PIN doesn't match what we have on file. You have ${PIN_MAX_ATTEMPTS - attempts} attempt${PIN_MAX_ATTEMPTS - attempts === 1 ? "" : "s"} left. Please try again.`);
+}
+
+// Mid-call re-verification against a different account, without ending the call or repeating intent
+// capture. A fresh BAN/PIN pair authenticates like any other, replacing the previous customer_id.
+function switchAccount(ctx: Ctx): TurnResult {
+  db.prepare(
+    `UPDATE auth_sessions SET stage = 'AWAITING_BAN', customer_id = NULL, pin_attempts = 0, ban_attempts = 0, authenticated_at = NULL, subflow = NULL, unknown_streak = 0
+     WHERE conversation_id = @cid`
+  ).run({ "@cid": ctx.conversationId });
+  db.prepare(`UPDATE conversations SET customer_id = NULL, auth_status = 'PENDING', auth_method = NULL, ban_provided = NULL WHERE id = @cid`).run({ "@cid": ctx.conversationId });
+  return reply(ctx, "No problem — what's the other account number?");
+}
+
 async function classify(ctx: Ctx): Promise<Intent> {
   const examples = Object.fromEntries(Object.entries(ctx.settings.intentOverrides).map(([k, v]) => [k, v.examples])) as Partial<Record<Intent, string[]>>;
   return classifyIntent(ctx.utterance, examples);
 }
 
+// PIN only, for every caller, regardless of the account's seeded mfa_enabled/mfa_method (user
+// decision, Sep 29 — "we are not doing MFA... remove that completely"). Supersedes the earlier
+// "dynamic in-call MFA with phone-enrollment upsell" design; the AWAITING_OTP stage, otpService.ts,
+// and the OTP-audit UI are left in place but now permanently unreachable rather than ripped out —
+// AWAITING_OTP is part of the DB CHECK constraint on auth_sessions.stage, and removing it would need
+// a full table rebuild for zero behavioral benefit, since nothing here ever sets that stage again.
 function startCredentialStage(ctx: Ctx, customer: CustomerRow): TurnResult {
   const first = customer.name.split(" ")[0];
-  if (!customer.mfa_enabled) {
-    setStage(ctx.conversationId, "AWAITING_PIN");
-    return reply(ctx, `Thanks, ${first}. To verify it's you, please tell me your 4-digit PIN.`);
-  }
-  const method = customer.mfa_method === "SMS" ? "SMS" : "EMAIL";
-  issueOtp(ctx.conversationId, customer, method);
-  setStage(ctx.conversationId, "AWAITING_OTP");
-  return reply(ctx, `Thanks, ${first}. To verify it's you, I've sent a one-time code to ${method === "EMAIL" ? "your email" : "your phone"}. Please read it back to me.`);
+  setStage(ctx.conversationId, "AWAITING_PIN");
+  return reply(ctx, `Thanks, ${first}. To verify it's you, please tell me your 4-digit PIN.`);
 }
 
 // Goal-directed: once verified, go straight to what the caller asked for at the start of the call.
@@ -406,6 +482,10 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
 
     case "SCHEDULE_CALLBACK":
       return startCallback(ctx, utterance);
+
+    case "SERVICE_AVAILABILITY":
+      setSubflow(ctx.conversationId, { type: "EXISTING_SERVICE_ZIP" });
+      return reply(ctx, "Sure — what ZIP code would you like me to check?");
 
     case "AGENT_REQUEST":
       return agentRequested(ctx);
@@ -502,17 +582,22 @@ function confirmCallback(ctx: Ctx, date: string, window: TimeWindow): TurnResult
   return reply(ctx, `We'll call you on ${phoneEnding(callerAni(ctx.conversationId))} on ${speakDate(date)} in the ${WINDOW_LABELS[window]}. Is that right?`);
 }
 
-// Out-of-flow behavior (PRD §6): never guess. First miss → say so and offer the menu; repeated misses
-// (tenant rule) → state the limitation and offer a live agent or a callback.
+// Out-of-flow behavior (PRD §6): never guess. First miss → a plain, natural re-prompt (no recited
+// menu — reciting a 7-item keypad list out loud on every miss reads as robotic and was flagged as
+// frustrating; the menu digits still work if a caller presses one, via classifyIntent's menuIntent()
+// check — this only removes proactively reading the list out). Repeated misses (tenant rule) → state
+// the limitation and offer a live agent or a callback.
 function notUnderstood(ctx: Ctx, outOfScope: boolean): TurnResult {
   const streak = ctx.session.unknown_streak + 1;
   setUnknownStreak(ctx.conversationId, streak);
   if (outOfScope || streak >= ctx.settings.unknownTurnsBeforeEscalation) {
     setSubflow(ctx.conversationId, { type: "ESCALATION_OFFER" });
-    const limit = outOfScope ? "I'm sorry, that's not something I can help with over the phone." : "I'm sorry, I'm not able to help with that myself, and I don't want to guess.";
+    const limit = outOfScope
+      ? "I'm sorry, I can only help with things related to your Springfield Fiber account or service."
+      : "I'm sorry, I'm not able to help with that myself, and I don't want to guess.";
     return reply(ctx, `${limit} I can transfer you to a live agent now, or have someone call you back. Which would you prefer?`);
   }
-  return reply(ctx, `Sorry, I didn't quite catch what you need. ${menuPrompt()}`);
+  return reply(ctx, "Sorry, I didn't quite catch that. Could you tell me again what you need?");
 }
 
 // ---------- subflows ----------
@@ -527,6 +612,96 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
   };
 
   switch (sf.type) {
+    case "CUSTOMER_KIND": {
+      const kind = parseCustomerKind(u);
+      if (!kind) return reply(ctx, "Sorry, just to confirm — are you an existing Springfield Fiber customer, or a new customer?");
+      // Natural conversation: a caller often answers both questions in one breath ("existing
+      // residential customer") — check for that before falling back to asking separately.
+      const accountType = parseAccountType(u);
+      if (kind === "EXISTING") {
+        if (accountType) {
+          setSubflow(ctx.conversationId, null);
+          return reply(ctx, "Thanks. Now, can you tell me your account number? It's the BAN on your bill.");
+        }
+        setSubflow(ctx.conversationId, { type: "ACCOUNT_TYPE", forNew: false });
+        return reply(ctx, "Got it. Is this a residential or a business account?");
+      }
+      if (accountType) {
+        setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
+        return reply(ctx, "Great — what's the ZIP code where you'd like service?");
+      }
+      setSubflow(ctx.conversationId, { type: "ACCOUNT_TYPE", forNew: true });
+      return reply(ctx, "Welcome! Are you looking for residential or business service?");
+    }
+
+    case "ACCOUNT_TYPE": {
+      const accountType = parseAccountType(u);
+      if (!accountType) {
+        return reply(ctx, sf.forNew ? "Sorry, are you looking for residential or business service?" : "Sorry, is this a residential or a business account?");
+      }
+      if (!sf.forNew) {
+        setSubflow(ctx.conversationId, null);
+        return reply(ctx, "Thanks. Now, can you tell me your account number? It's the BAN on your bill.");
+      }
+      setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
+      return reply(ctx, "Great — what's the ZIP code where you'd like service?");
+    }
+
+    case "NEW_CUSTOMER_ZIP": {
+      const zip = extractZip(u);
+      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      const kindLabel = sf.accountType === "BUSINESS" ? "business" : "residential";
+      if (!isServiceAvailable(zip, sf.accountType)) {
+        setSubflow(ctx.conversationId, null);
+        return reply(ctx, `I'm sorry, Springfield Fiber ${kindLabel} service isn't available in ${zip} yet. ${fillTemplate(ctx.settings.closePrompt, ctx.settings)}`, { endCall: true });
+      }
+      setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_OFFER", accountType: sf.accountType });
+      return reply(ctx, `Good news — Springfield Fiber ${kindLabel} service is available in ${zip}. I can transfer you to get signed up. Would you like me to do that?`);
+    }
+
+    case "NEW_CUSTOMER_OFFER": {
+      const answer = await parseYesNo(u, "Transfer you to sign up?");
+      if (answer === "NO") {
+        setSubflow(ctx.conversationId, null);
+        return closeCall(ctx);
+      }
+      if (answer !== "YES") return reply(ctx, "Would you like me to transfer you to sign up? Please say yes or no.");
+      return newCustomerTransfer(ctx, sf.accountType);
+    }
+
+    case "EXISTING_SERVICE_ZIP": {
+      const zip = extractZip(u);
+      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      const customer = requireCustomer(ctx.session);
+      const available = isServiceAvailable(zip, customer.customer_type);
+      setSubflow(ctx.conversationId, null);
+      return reply(
+        ctx,
+        `${available ? `Good news — Springfield Fiber service is available in ${zip}.` : `I'm sorry, Springfield Fiber service isn't available in ${zip} yet.`} ${ANYTHING_ELSE}`
+      );
+    }
+
+    case "CONFIRM_BAN": {
+      const answer = await parseYesNo(u, `Your account number is ${spokenDigits(sf.ban)}?`);
+      if (answer === "YES") return lookupBan(ctx, sf.ban);
+      if (answer === "NO") {
+        setSubflow(ctx.conversationId, null);
+        return reply(ctx, "Sorry about that — could you say your account number again?");
+      }
+      return reply(ctx, `Sorry, is your account number ${spokenDigits(sf.ban)}? Please say yes or no.`);
+    }
+
+    case "CONFIRM_PIN": {
+      const customer = requireCustomer(ctx.session);
+      const answer = await parseYesNo(u, `Your PIN is ${spokenDigits(sf.pin)}?`);
+      if (answer === "YES") return verifyPinTurn(ctx, customer, sf.pin);
+      if (answer === "NO") {
+        setSubflow(ctx.conversationId, null);
+        return reply(ctx, "Sorry about that — could you say your PIN again?");
+      }
+      return reply(ctx, `Sorry, is your PIN ${spokenDigits(sf.pin)}? Please say yes or no.`);
+    }
+
     case "CONFIRM_PAYMENT": {
       const question = `Charge ${money(sf.amount)} to the card on file now?`;
       const answer = await parseYesNo(u, question);
@@ -665,7 +840,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       if (/\b(agent|transfer|person|human|now|first|someone now)\b/i.test(u)) return escalationReply(ctx, "UNRESOLVED_REQUEST");
       if (/\b(call ?back|call me|later|second|callback)\b/i.test(u)) return startCallback(ctx);
       if ((await parseYesNo(u, "Transfer to an agent?")) === "YES") return escalationReply(ctx, "UNRESOLVED_REQUEST");
-      return reply(ctx, `Okay. ${menuPrompt()}`);
+      return reply(ctx, "Okay. How else can I help you?");
     }
 
     case "CSAT": {
@@ -700,18 +875,34 @@ function startCallbackWithNote(ctx: Ctx, note: string): TurnResult {
   return { ...r, aiText: `${note} ${r.aiText}` };
 }
 
+// Every live-agent transfer announces a routing code before hanging up — there's no real agent queue
+// in this deployment, but the call still ends looking like it was routed somewhere specific. The code
+// is picked by the caller's actual (first, primary) topic, not one shared bucket for every transfer
+// reason — so a call's transcript can show what queue it *should* have gone to next to what it
+// actually announced, and ops can spot a misroute at a glance (user request).
 function escalationReply(ctx: Ctx, reason: EscalationReason): TurnResult {
-  createEscalation(ctx.conversationId, reason);
+  const intent = storedIntent(ctx.conversationId);
+  const code = routingCodeForIntent(ctx.settings, intent);
+  createEscalation(ctx.conversationId, reason, code);
   setSubflow(ctx.conversationId, null);
   const verified = loadSession(ctx.conversationId).stage === "AUTHENTICATED";
   const intro =
-    reason === "PIN_LOCKOUT" || reason === "OTP_FAILED" || reason === "VERIFICATION_FAILED"
+    reason === "PIN_LOCKOUT" || reason === "OTP_FAILED" || reason === "VERIFICATION_FAILED" || reason === "BAN_LOOKUP_FAILED"
       ? "I'm not able to verify your identity on this call, so I'm transferring you to a live agent who can help."
       : "I'm transferring you to a live agent now.";
   const context = verified
-    ? "I've passed along a summary of our conversation, so you won't need to repeat yourself."
+    ? "I've captured a summary of our conversation, so you won't have to repeat yourself."
     : "I've passed along what you've told me so far; the agent will verify your identity first.";
-  return reply(ctx, `${intro} ${context}`, { endCall: true, transfer: true });
+  return reply(ctx, `${intro} ${context} Transferring you to agent ${spokenDigits(code)}.`, { endCall: true, transfer: true });
+}
+
+// New (not-yet-a-customer) caller, after confirming they want to sign up — same "announce a code,
+// then hang up" shape as escalationReply, but logged with no customer/BAN context to verify.
+function newCustomerTransfer(ctx: Ctx, accountType: CustomerType): TurnResult {
+  const code = accountType === "BUSINESS" ? ctx.settings.routingCodes.newCustomerBusiness : ctx.settings.routingCodes.newCustomerResidential;
+  createEscalation(ctx.conversationId, "NEW_CUSTOMER_ENROLLMENT", code);
+  setSubflow(ctx.conversationId, null);
+  return reply(ctx, `Great, I'm transferring you to sign up now. Your reference code is ${spokenDigits(code)}.`, { endCall: true, transfer: true });
 }
 
 export { getDevOtp };

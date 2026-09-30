@@ -10,6 +10,8 @@ interface SeedCustomer {
   email: string;
   mfaEnabled: boolean;
   mfaMethod: "NONE" | "EMAIL" | "SMS";
+  mfaPhoneNumber?: string; // enrolled OTP-delivery number; only the SMS trio has one out of the box
+  customerType?: "RESIDENTIAL" | "BUSINESS"; // defaults to RESIDENTIAL
   currentBalance: number;
   lastPaymentAmount: number;
   lastPaymentDate: string;
@@ -55,7 +57,7 @@ const customers: SeedCustomer[] = [
   },
   {
     id: "CUS005", name: "Ellis Park", phoneNumber: "+15550101005", ban: "BAN100005", pin: "7742",
-    email: "ellis.park@example.com", mfaEnabled: true, mfaMethod: "EMAIL",
+    email: "ellis.park@example.com", mfaEnabled: true, mfaMethod: "EMAIL", customerType: "BUSINESS",
     currentBalance: 210.55, lastPaymentAmount: 0, lastPaymentDate: "2026-07-10",
     nextBillingDueDate: "2026-09-15", pastDueAmount: 210.55, discountPercent: 0,
     autopayEnabled: false, planName: "Fiber 500 + TV", accountStatus: "PAST_DUE",
@@ -69,21 +71,21 @@ const customers: SeedCustomer[] = [
   },
   {
     id: "CUS007", name: "Grace Lindqvist", phoneNumber: "+15550101007", ban: "BAN100007", pin: "2684",
-    email: "grace.lindqvist@example.com", mfaEnabled: true, mfaMethod: "SMS",
+    email: "grace.lindqvist@example.com", mfaEnabled: true, mfaMethod: "SMS", mfaPhoneNumber: "+15550101007",
     currentBalance: 99.99, lastPaymentAmount: 99.99, lastPaymentDate: "2026-08-28",
     nextBillingDueDate: "2026-09-28", pastDueAmount: 0, discountPercent: 0,
     autopayEnabled: true, planName: "Fiber 1000 + TV", accountStatus: "ACTIVE",
   },
   {
     id: "CUS008", name: "Hassan Malik", phoneNumber: "+15550101008", ban: "BAN100008", pin: "6157",
-    email: "hassan.malik@example.com", mfaEnabled: true, mfaMethod: "SMS",
+    email: "hassan.malik@example.com", mfaEnabled: true, mfaMethod: "SMS", mfaPhoneNumber: "+15550101008", customerType: "BUSINESS",
     currentBalance: 132.40, lastPaymentAmount: 70.00, lastPaymentDate: "2026-08-18",
     nextBillingDueDate: "2026-09-18", pastDueAmount: 62.40, discountPercent: 0,
     autopayEnabled: false, planName: "Fiber 300", accountStatus: "ACTIVE",
   },
   {
     id: "CUS009", name: "Ines Castellano", phoneNumber: "+15550101009", ban: "BAN100009", pin: "8420",
-    email: "ines.castellano@example.com", mfaEnabled: true, mfaMethod: "SMS",
+    email: "ines.castellano@example.com", mfaEnabled: true, mfaMethod: "SMS", mfaPhoneNumber: "+15550101009",
     currentBalance: 0, lastPaymentAmount: 84.99, lastPaymentDate: "2026-09-10",
     nextBillingDueDate: "2026-10-10", pastDueAmount: 0, discountPercent: 0,
     autopayEnabled: true, planName: "Fiber 500", accountStatus: "ACTIVE",
@@ -110,12 +112,12 @@ function main() {
   const db = openDb();
   const insertCustomer = db.prepare(`
     INSERT OR REPLACE INTO customers (
-      id, name, phone_number, ban, pin_hash, email, mfa_enabled, mfa_method,
+      id, name, phone_number, ban, pin_hash, email, mfa_enabled, mfa_method, mfa_phone_number, customer_type,
       current_balance, last_payment_amount, last_payment_date, next_billing_due_date,
       past_due_amount, discount_percent, autopay_enabled, plan_name, account_status,
       portal_password_hash, service_zip
     ) VALUES (
-      @id, @name, @phoneNumber, @ban, @pinHash, @email, @mfaEnabled, @mfaMethod,
+      @id, @name, @phoneNumber, @ban, @pinHash, @email, @mfaEnabled, @mfaMethod, @mfaPhoneNumber, @customerType,
       @currentBalance, @lastPaymentAmount, @lastPaymentDate, @nextBillingDueDate,
       @pastDueAmount, @discountPercent, @autopayEnabled, @planName, @accountStatus,
       @portalPasswordHash, @serviceZip
@@ -134,6 +136,8 @@ function main() {
         "@email": c.email,
         "@mfaEnabled": c.mfaEnabled ? 1 : 0,
         "@mfaMethod": c.mfaMethod,
+        "@mfaPhoneNumber": c.mfaPhoneNumber ?? null,
+        "@customerType": c.customerType ?? "RESIDENTIAL",
         "@currentBalance": c.currentBalance,
         "@lastPaymentAmount": c.lastPaymentAmount,
         "@lastPaymentDate": c.lastPaymentDate,

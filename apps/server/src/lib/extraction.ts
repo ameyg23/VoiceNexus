@@ -8,13 +8,61 @@ import { extractBanAI, extractPinAI, extractOtpAI, classifyIntentAI, classifyYes
 import { parseSpokenDate, toIsoDate, todayLocal } from "./dates.js";
 import { PLAN_CATALOG, findPlan, matchPlanFromText, type PlanInfo } from "./businessLogic.js";
 
-export async function extractBan(text: string): Promise<string | null> {
-  return extractBanRegex(text) ?? (await extractBanAI(text));
+export interface Extracted {
+  value: string;
+  // Regex-matched (plain digits, typed keypad, or clean "one zero zero..." runs) — unambiguous, so
+  // the caller doesn't need to hear it read back. false = the AI had to interpret it (filler, unusual
+  // phrasing) — confirm it before using it (PRD "confirm only if unclear").
+  confident: boolean;
 }
 
-export async function extractPin(text: string): Promise<string | null> {
-  return extractPinRegex(text) ?? (await extractPinAI(text));
+export async function extractBan(text: string): Promise<Extracted | null> {
+  const regex = extractBanRegex(text);
+  if (regex) return { value: regex, confident: true };
+  const ai = await extractBanAI(text);
+  return ai ? { value: ai, confident: false } : null;
 }
+
+export async function extractPin(text: string): Promise<Extracted | null> {
+  const regex = extractPinRegex(text);
+  if (regex) return { value: regex, confident: true };
+  const ai = await extractPinAI(text);
+  return ai ? { value: ai, confident: false } : null;
+}
+
+// 5-digit ZIP — plain digits or a keypad entry are unambiguous enough that no AI fallback is needed.
+export function extractZip(raw: string): string | null {
+  const text = joinSpokenDigits(raw);
+  const match = text.match(/\b(\d{5})\b/);
+  return match ? match[1] : null;
+}
+
+
+const EXISTING_CUSTOMER_RE = /\b(existing|current|already (a |an )?customer|have (an )?account|i'?m a customer)\b/i;
+const NEW_CUSTOMER_RE = /\bnew( customer)?\b|not (a )?customer (yet)?|don'?t have an account|sign(ing)? up|i'?d like to (become|sign up)/i;
+
+export function parseCustomerKind(text: string): "EXISTING" | "NEW" | null {
+  const existing = EXISTING_CUSTOMER_RE.test(text);
+  const isNew = NEW_CUSTOMER_RE.test(text);
+  if (existing && !isNew) return "EXISTING";
+  if (isNew && !existing) return "NEW";
+  return null;
+}
+
+const BUSINESS_RE = /\bbusiness\b|\bcompany\b|\bcommercial\b/i;
+const RESIDENTIAL_RE = /\bresidential\b|\bresidence\b|\bhome\b|\bpersonal\b|\bhousehold\b/i;
+
+export function parseAccountType(text: string): "RESIDENTIAL" | "BUSINESS" | null {
+  const business = BUSINESS_RE.test(text);
+  const residential = RESIDENTIAL_RE.test(text);
+  if (business && !residential) return "BUSINESS";
+  if (residential && !business) return "RESIDENTIAL";
+  return null;
+}
+
+// "Wrong account, let me give you a different one" mid-call, after already being verified.
+export const SWITCH_ACCOUNT_RE =
+  /\b(wrong|different|another|other) account\b|\bswitch(ing)? accounts?\b|\bnot the (right|correct) account\b|\bmy other account\b/i;
 
 export async function extractOtp(text: string): Promise<string | null> {
   return extractOtpRegex(text) ?? (await extractOtpAI(text));
@@ -60,6 +108,10 @@ export async function classifyIntent(text: string, examples: Partial<Record<Inte
 // Checked in order — more specific intents first ("can't pay my bill" is a promise, not a payment).
 const INTENT_KEYWORDS: [Intent, RegExp][] = [
   ["AGENT_REQUEST", /\b(agent|representative|human|real person|live person|operator|customer service rep)\b|speak (to|with) (a |an )?(person|someone)/i],
+  [
+    "SERVICE_AVAILABILITY",
+    /\bservice available\b|\bavailable (in|for|at) (my|your|this) area\b|\bdo you (cover|serve)\b|\baddress covered\b|\bservice area\b|\bsign(ing)? up\b|\bbecome a (new )?customer\b|\bnew customer\b/i,
+  ],
   ["SCHEDULE_CALLBACK", /\bcall(ing)? me back\b|\bcall ?back\b|\bring me back\b/i],
   ["SCHEDULE_TECH", /\btechnician\b|\btech (visit|to come)\b|send (someone|a tech)|someone (to )?come out|\bappointment\b/i],
   ["OUTAGE_CHECK", /\boutage\b|down in (my|the) area|is (the|your) (network|service) down/i],

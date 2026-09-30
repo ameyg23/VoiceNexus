@@ -45,6 +45,21 @@ export default function TestCallPage() {
 
   useEffect(() => () => deviceRef.current?.destroy(), []);
 
+  // Physical keyboard as a second way to key in DTMF — not just the on-screen pad. 0-9, *, # only;
+  // ignored outside an active call so normal typing elsewhere on the page (there isn't any right
+  // now, but future-proof) isn't swallowed.
+  useEffect(() => {
+    if (phase !== "in-call") return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (KEYS.includes(e.key)) {
+        e.preventDefault();
+        press(e.key);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [phase]);
+
   async function getDevice(): Promise<Device> {
     if (deviceRef.current) return deviceRef.current;
     const { token, careLineNumber } = await fetchVoiceToken();
@@ -90,7 +105,7 @@ export default function TestCallPage() {
       call.on("error", (err: { message?: string }) => setError(`Call error: ${err.message ?? String(err)}`));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setError(message.startsWith("503") ? "Browser calling isn't set up yet — run the Twilio setup script (see Integrations)." : message);
+      setError(message.startsWith("503") ? "Browser calling isn't set up yet. Run the Twilio setup script (see Integrations)." : message);
       setPhase("idle");
     }
   }
@@ -116,7 +131,7 @@ export default function TestCallPage() {
     <AdminShell title="Test call" subtitle="Call the real care line from this browser's microphone.">
       <ErrorNote error={error} />
       <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        This places a <strong>real Twilio call</strong> and spends trial credit. Use it only for the final verification batch — iterate in{" "}
+        This places a <strong>real Twilio call</strong> and spends trial credit. Use it only for the final verification batch; iterate in{" "}
         <Link href="/demo/call" className="font-medium underline">
           Demo Mode
         </Link>{" "}
@@ -128,7 +143,7 @@ export default function TestCallPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-500">Care line</p>
-              <p className="text-lg font-semibold text-gray-900 tabular-nums">{careLine ?? "—"}</p>
+              <p className="text-lg font-semibold text-gray-900 tabular-nums">{careLine ?? "-"}</p>
             </div>
             <Badge tone={PHASE_BADGE[phase].tone}>{PHASE_BADGE[phase].label}</Badge>
           </div>
@@ -148,23 +163,24 @@ export default function TestCallPage() {
               </button>
             ))}
           </div>
+          {phase === "in-call" && <p className="mt-2 text-center text-xs text-gray-400">Or use your keyboard: 0-9, *, #</p>}
 
           <div className="mt-4 flex gap-2">
             {live ? (
               <>
-                <button onClick={hangUp} className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white hover:bg-red-700">
+                <button onClick={hangUp} className="btn flex-1 bg-red-600 py-2.5 text-sm text-white hover:bg-red-700">
                   Hang up
                 </button>
                 <button
                   onClick={toggleMute}
                   disabled={phase !== "in-call"}
-                  className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                  className="btn border border-gray-200 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                 >
                   {muted ? "Unmute" : "Mute"}
                 </button>
               </>
             ) : (
-              <button onClick={() => void placeCall()} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
+              <button onClick={() => void placeCall()} className="btn btn-primary flex-1 py-2.5 text-sm">
                 Call care line
               </button>
             )}
@@ -177,14 +193,14 @@ export default function TestCallPage() {
               <label className="flex items-start gap-2">
                 <input type="radio" checked={mode === "pstn"} onChange={() => setMode("pstn")} disabled={live} className="mt-1" />
                 <span>
-                  <span className="font-medium text-gray-900">Dial the care-line number</span> (recommended) — goes through the number's own webhook,
+                  <span className="font-medium text-gray-900">Dial the care-line number</span> (recommended): goes through the number's own webhook,
                   exactly like an outside caller.
                 </span>
               </label>
               <label className="flex items-start gap-2">
                 <input type="radio" checked={mode === "direct"} onChange={() => setMode("direct")} disabled={live} className="mt-1" />
                 <span>
-                  <span className="font-medium text-gray-900">Connect straight to the IVR</span> — fallback if dialing our own number misbehaves. Same
+                  <span className="font-medium text-gray-900">Connect straight to the IVR</span>: fallback if dialing our own number misbehaves. Same
                   IVR, skips the phone-number leg.
                 </span>
               </label>
@@ -195,9 +211,9 @@ export default function TestCallPage() {
             <ol className="list-decimal space-y-1.5 pl-5 text-sm text-gray-700">
               <li>Allow the microphone when the browser asks.</li>
               <li>Say what you need (e.g. “I want to check my balance”).</li>
-              <li>Give a demo BAN — say it, or type it on the keypad (e.g. 100001, then #).</li>
-              <li>Give the PIN / one-time code the same way (Amara Okafor’s PIN is 4821).</li>
-              <li>Ask a question, then say “that's all” to end — or hang up.</li>
+              <li>Give a demo BAN: say it, or type it on the keypad (e.g. 100001, then #).</li>
+              <li>Give the 4-digit PIN the same way (Amara Okafor’s PIN is 4821).</li>
+              <li>Ask a question, then say “that's all” to end, or hang up.</li>
               <li>Check the call below: transcript, status, and the recording (arrives a few seconds after hang-up).</li>
             </ol>
           </Card>

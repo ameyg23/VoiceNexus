@@ -2,66 +2,79 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchDashboardSummary, type DashboardSummary } from "../../../lib/api";
+import { fetchDashboardSummary, fetchEscalations, type DashboardSummary, type Escalation } from "../../../lib/api";
 import { AdminShell, Card, ErrorNote, StatTile } from "../../../components/AdminShell";
-import { Donut, Gauge } from "../../../components/charts";
+import { Donut, StackedBar, OUTCOME_COLORS } from "../../../components/charts";
 import { Badge } from "../../../components/Badge";
-import { OUTCOME_LABELS, OUTCOME_TONES, formatDateTime, formatDuration, formatMoney, intentLabel } from "../../../lib/format";
-
-// Status colors for the three rate gauges — good (contained), serious (sent to a human), neutral/brand.
-const GAUGE = { containment: "#16a34a", escalated: "#d97706", callback: "#0d9a86" };
+import { ArrowRightIcon } from "../../../components/icons";
+import { ESCALATION_REASON_LABELS, OUTCOME_LABELS, OUTCOME_TONES, formatDateTime, formatDuration, formatMoney, intentLabel } from "../../../lib/format";
 
 export default function AdminDashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [escalations, setEscalations] = useState<Escalation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchDashboardSummary()
-      .then(setSummary)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    const loadSummary = () =>
+      fetchDashboardSummary()
+        .then(setSummary)
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    const loadEscalations = () => fetchEscalations("OPEN").then(({ escalations }) => setEscalations(escalations));
+
+    loadSummary();
+    loadEscalations();
+    const poll = setInterval(() => {
+      loadSummary();
+      loadEscalations();
+    }, 10_000); // real-time-ish: live snapshot, refreshed every 10s
+    return () => clearInterval(poll);
   }, []);
 
   const s = summary;
   const of = (n: number) => `${n} of ${s?.finishedCalls ?? 0} calls`;
+  // "Automated" = the AI handled the call end-to-end, no human involved — resolved, booked a
+  // callback, or the caller left mid-call, but never escalated. "Non-automated" = handed to a
+  // live agent.
+  const automated = s ? s.resolved + s.callback + s.abandoned : 0;
+  const automatedRate = s && s.finishedCalls > 0 ? automated / s.finishedCalls : null;
 
   return (
     <AdminShell title="Dashboard overview" subtitle="Live snapshot from every call so far">
       <ErrorNote error={error} />
       {s && (
         <>
-          {s.handoffs.waiting > 0 && (
-            <Link
-              href="/admin/escalations"
-              className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-900 hover:bg-amber-100"
-            >
-              <span>
-                <strong>{s.handoffs.waiting}</strong> escalated call{s.handoffs.waiting === 1 ? " is" : "s are"} waiting for an agent.
-              </span>
-              <span className="font-semibold">Open queue →</span>
-            </Link>
-          )}
-
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatTile label="Total Calls" value={s.totalCalls} />
+            <StatTile label="Automated" value={automated} hint={automatedRate === null ? undefined : `${Math.round(automatedRate * 100)}% of finished calls`} />
+            <StatTile label="Escalated to Agent" value={s.escalated} hint={s.transferRate === null ? undefined : `${Math.round(s.transferRate * 100)}% of finished calls`} />
             <StatTile label="Average Handle Time" value={formatDuration(s.avgHandleSeconds)} />
-            <StatTile label="Callback Backlog" value={s.callbackBacklog} />
-            <StatTile label="Cost per Call" value={formatMoney(s.costPerCall)} hint="Blended, your rates" />
-            <StatTile label="Care CSAT" value={s.csatAverage === null ? "—" : `${s.csatAverage}/5`} hint={`${s.csatResponses} of ${s.resolved} rated`} />
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Card title="Containment Rate">
-              <Gauge value={s.containmentRate} color={GAUGE.containment} caption={of(s.resolved)} description="Share of calls the AI resolved without escalating to a human" />
+            <Card title="Call Handling" subtitle="Automated by the AI vs. escalated to a live agent">
+              <StackedBar
+                segments={[
+                  { label: "Automated (AI-handled)", value: automated, color: OUTCOME_COLORS.RESOLVED },
+                  { label: "Escalated to agent", value: s.escalated, color: OUTCOME_COLORS.ESCALATED },
+                ]}
+              />
             </Card>
-            <Card title="Escalated to Agent">
-              <Gauge value={s.transferRate} color={GAUGE.escalated} caption={of(s.escalated)} description="Share of calls handed off to a live agent" />
+            <Card title="Automated Call Outcomes" subtitle="How the AI-handled calls ended">
+              <StackedBar
+                segments={[
+                  { label: "Successful", value: s.resolved, color: OUTCOME_COLORS.RESOLVED },
+                  { label: "Callback booked", value: s.callback, color: OUTCOME_COLORS.CALLBACK },
+                  { label: "Abandoned", value: s.abandoned, color: OUTCOME_COLORS.ABANDONED },
+                ]}
+              />
             </Card>
-            <Card title="Callback Rate">
-              <Gauge value={s.callbackRate} color={GAUGE.callback} caption={of(s.callback)} description="Share of calls where a callback was scheduled instead" />
-            </Card>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card title="Intents Distribution">
               <Donut data={s.intents.map((i) => ({ label: intentLabel(i.intent), value: i.count }))} centerLabel="Total Calls" />
             </Card>
+            <EscalationsCard escalations={escalations} costPerCall={s.costPerCall} />
           </div>
 
           <Card className="mt-6" title="Recent calls">
@@ -102,5 +115,47 @@ export default function AdminDashboardPage() {
         </>
       )}
     </AdminShell>
+  );
+}
+
+// Waiting/accepted escalations, at a glance — click through to the full queue for accept/resolve and
+// the assistant's handoff summary. Not a separate sidebar tab anymore; this is how it's reached.
+function EscalationsCard({ escalations, costPerCall }: { escalations: Escalation[] | null; costPerCall: number | null }) {
+  const waiting = (escalations ?? []).filter((e) => e.status === "WAITING").length;
+  const preview = (escalations ?? []).slice(0, 5);
+
+  return (
+    <Card
+      title={
+        <Link href="/admin/escalations" className="flex items-center justify-between gap-2 hover:text-brand-600">
+          Escalations
+          <ArrowRightIcon className="h-4 w-4" />
+        </Link>
+      }
+      subtitle={waiting > 0 ? `${waiting} call${waiting === 1 ? "" : "s"} waiting for an agent` : "Nothing waiting right now"}
+    >
+      {!escalations ? (
+        <p className="text-sm text-gray-400">Loading…</p>
+      ) : preview.length === 0 ? (
+        <p className="text-sm text-gray-500">No open escalations. {costPerCall !== null && `Blended cost per call: ${formatMoney(costPerCall)}.`}</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {preview.map((e) => (
+            <li key={e.id}>
+              <Link href={`/admin/calls/${e.conversationId}`} className="flex items-center justify-between gap-3 py-3 hover:bg-gray-50">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-gray-900">{e.customerName ?? "Unidentified caller"}</span>
+                  <span className="block text-xs text-gray-500">{ESCALATION_REASON_LABELS[e.reason] ?? e.reason}</span>
+                </span>
+                <Badge tone={e.status === "WAITING" ? "warning" : "info"}>{e.status === "WAITING" ? "Waiting" : `With ${e.acceptedByName ?? "agent"}`}</Badge>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link href="/admin/escalations" className="mt-4 inline-block text-sm font-semibold text-brand-600 hover:text-brand-700">
+        View escalation queue →
+      </Link>
+    </Card>
   );
 }

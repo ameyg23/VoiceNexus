@@ -21,6 +21,7 @@ function toEmployeeView(row: CustomerWithPhone) {
     ban: row.ban,
     email: row.email,
     mfaMethod: row.mfa_method,
+    mfaPhoneNumber: row.mfa_phone_number,
     planName: row.plan_name,
     accountStatus: row.account_status,
     currentBalance: row.current_balance,

@@ -1,22 +1,28 @@
 @import "tailwindcss";
 
-/* Brand palette. Change these to rebrand the whole site: every "brand-*" class, the logo and the
-   charts read from here. Deep teal; 600 is the primary (buttons, active nav) and keeps ≥ 4.5:1
+/* Brand palette — NForceOne house style (nforce-website.pages.dev): signal red on black/white.
+   Change these to rebrand the whole site: every "brand-*" class, the logo and the charts read
+   from here. 600 (#c40000, the reference site's exact CTA red) is the primary and keeps ≥ 4.5:1
    contrast with white text. */
 @theme {
-  --color-brand-50: #effcf9;
-  --color-brand-100: #d2f6ee;
-  --color-brand-200: #a6ecdd;
-  --color-brand-300: #6fd9c6;
-  --color-brand-400: #34bfa9;
-  --color-brand-500: #14a18e;
-  --color-brand-600: #0f766e;
-  --color-brand-700: #0e5f59;
-  --color-brand-800: #0f4c48;
-  --color-brand-900: #10403d;
-  --color-brand-950: #042624;
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-400: #f1514a;
+  --color-brand-500: #dc1f16;
+  --color-brand-600: #c40000;
+  --color-brand-700: #a30000;
+  --color-brand-800: #7f0000;
+  --color-brand-900: #5c0000;
+  --color-brand-950: #3d0000;
+
+  --color-ink-950: #0a0a0a;
+  --color-ink-900: #141414;
+  --color-ink-800: #1f1f1f;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: var(--font-inter-tight), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -28,4 +34,74 @@ body {
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Headings site-wide use the bolder, tighter display face the reference site uses — free
+   typographic consistency without touching every page. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+/* Small uppercase label that precedes a section heading, e.g. "WHAT WE DO" on the reference site. */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-brand-600);
+}
+
+/* Pill CTA buttons — the reference site's signature control shape. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.btn-primary {
+  background: var(--color-brand-600);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-brand-700);
+}
+.btn-dark {
+  background: var(--color-ink-950);
+  color: #fff;
+}
+.btn-dark:hover:not(:disabled) {
+  background: var(--color-ink-800);
+}
+.btn-outline {
+  background: transparent;
+  color: #111827;
+  border: 1.5px solid #111827;
+}
+.btn-outline:hover:not(:disabled) {
+  background: #111827;
+  color: #fff;
+}
+.btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: #f9fafb;
 }

@@ -45,11 +45,18 @@ if (process.env.DEMO_MODE === "true") {
   app.use("/api/dev", devRouter);
 }
 
-// GET /api/demo/config — the non-sensitive tenant settings the browser demo needs (speech language,
-// whether to record, brand name for the page).
+// GET /api/demo/config — the non-sensitive tenant settings the browser demo (and the public marketing
+// site's "call customer care" section) needs: speech language, whether to record, brand name, and the
+// care-line number to display.
 app.get("/api/demo/config", (_req, res) => {
   const s = getSettings();
-  res.json({ brandName: s.brandName, assistantName: s.assistantName, language: s.language, recordingEnabled: s.recordingEnabled });
+  res.json({
+    brandName: s.brandName,
+    assistantName: s.assistantName,
+    language: s.language,
+    recordingEnabled: s.recordingEnabled,
+    careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null,
+  });
 });
 
 app.get("/api/health", (_req, res) => {

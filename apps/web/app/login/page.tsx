@@ -23,7 +23,7 @@ export default function LoginPage() {
       const { redirectTo } = await login(email.trim(), password);
       router.push(redirectTo);
     } catch (err) {
-      setError(String(err).includes("401") ? "Incorrect email or password." : "Couldn't sign you in right now — please try again.");
+      setError(String(err).includes("401") ? "Incorrect email or password." : "Couldn't sign you in right now. Please try again.");
       setLoading(false);
     }
   }

@@ -12,7 +12,7 @@ function resolvedBy(outcome: ConversationSummary["outcome"]): string {
   if (outcome === "ESCALATED") return "Agent";
   if (outcome === "CALLBACK") return "Callback";
   if (outcome === "RESOLVED") return "VoiceNexus";
-  return "—";
+  return "-";
 }
 
 // The one calls table — used by the Calls page, the dashboard's recent calls, and customer detail.
@@ -51,9 +51,9 @@ export function CallsTable({ calls, showCustomer = true, empty = "No calls yet."
               </td>
               <td className="whitespace-nowrap py-4 pr-4 text-gray-600">{formatDateTime(c.startTime)}</td>
               <td className="whitespace-nowrap py-4 pr-4 text-gray-600 tabular-nums">{c.ani}</td>
-              {showCustomer && <td className="py-4 pr-4 text-gray-600">{c.customerName ?? "—"}</td>}
+              {showCustomer && <td className="py-4 pr-4 text-gray-600">{c.customerName ?? "-"}</td>}
               <td className="py-4 pr-4 text-gray-600">{intentLabel(c.detectedIntent)}</td>
-              <td className="py-4 pr-4 text-gray-600">{c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "—"}</td>
+              <td className="py-4 pr-4 text-gray-600">{c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "-"}</td>
               <td className="py-4 pr-4">
                 <Badge tone={OUTCOME_TONES[c.outcome]}>{OUTCOME_LABELS[c.outcome]}</Badge>
               </td>

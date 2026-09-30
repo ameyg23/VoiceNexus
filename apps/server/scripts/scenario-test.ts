@@ -67,7 +67,11 @@ const expectText = (t: Turn, re: RegExp, label: string) => check(label, re.test(
 const one = (sql: string, ...params: (string | number)[]) => db.prepare(sql).get(...params) as Record<string, any> | undefined;
 const balance = (id: string) => Number(one(`SELECT current_balance b FROM customers WHERE id = ?`, id)!.b);
 
+// Drives the pre-BAN questions added for the existing/new-customer + residential/business flow,
+// then the account number and PIN — the shared "get to AUTHENTICATED" path every scenario uses.
 async function verifyPin(call: Call, ban: string, pin: string) {
+  await call.say("existing customer");
+  await call.say("residential");
   await call.say(ban);
   return call.say(pin);
 }
@@ -86,8 +90,8 @@ function restore() {
   }
   for (const c of customersBefore) {
     db.prepare(
-      `UPDATE customers SET current_balance = ?, past_due_amount = ?, last_payment_amount = ?, last_payment_date = ?, plan_name = ? WHERE id = ?`
-    ).run(c.current_balance, c.past_due_amount, c.last_payment_amount, c.last_payment_date, c.plan_name, c.id);
+      `UPDATE customers SET current_balance = ?, past_due_amount = ?, last_payment_amount = ?, last_payment_date = ?, plan_name = ?, mfa_method = ?, mfa_phone_number = ? WHERE id = ?`
+    ).run(c.current_balance, c.past_due_amount, c.last_payment_amount, c.last_payment_date, c.plan_name, c.mfa_method, c.mfa_phone_number, c.id);
   }
   db.prepare(`DELETE FROM tenant_settings`).run();
   for (const s of settingsBefore) db.prepare(`INSERT INTO tenant_settings (key, value, updated_at) VALUES (?, ?, ?)`).run(s.key, s.value, s.updated_at);
@@ -105,9 +109,19 @@ async function scenarios() {
   {
     const call = await Call.start();
     expectText(call.last, /virtual assistant/i, "greeting discloses the AI (compliance)");
-    expectText(call.last, /recorded/i, "greeting discloses recording");
-    const t = await call.say("what's my balance");
+    check("recording disclosure NOT spoken by default (Sep 29 — user: 'no need of this')", !/recorded/i.test(call.last.aiText), call.last.aiText);
+    await call.say("what's my balance");
+    await call.say("existing customer");
+    const t = await call.say("residential");
     check("pronunciation override applied to speech only", /B-A-N/.test(t.speechText) && /\bBAN\b/.test(t.aiText), `aiText="${t.aiText}" speech="${t.speechText}"`);
+  }
+
+  console.log("\n1b. Recording disclosure still works when ops explicitly re-enables it");
+  {
+    setSetting("recordingDisclosureEnabled", true);
+    const call = await Call.start();
+    expectText(call.last, /recorded/i, "greeting discloses recording when explicitly enabled");
+    setSetting("recordingDisclosureEnabled", false); // restore the new default for the rest of the suite
   }
 
   console.log("\n2. Identity before action, goal-directed: balance asked up front is answered right after PIN");
@@ -119,12 +133,36 @@ async function scenarios() {
     expectText(t, /verified.*\$\d+\.\d\d/i, "verified, then balance given without re-asking");
     check("stage AUTHENTICATED", t.stage === "AUTHENTICATED", t.stage);
     const bye = await call.say("that's all, thanks");
-    expectText(bye, /scale of 1 to 5/i, "CSAT survey asked at the end");
+    check("call closes immediately (CSAT off by default, Sep 29)", bye.endCall, JSON.stringify(bye));
+    const after = await post(`/api/calls/${call.id}/turn`, { text: "hello?" });
+    check("ended call can't be continued (409)", after.status === 409, `status ${after.status}`);
+  }
+
+  console.log("\n2b. CSAT explicitly enabled: normal rating flow, and changing their mind mid-survey to ask for a live agent");
+  {
+    setSetting("csatSurveyEnabled", true);
+
+    const call = await Call.start();
+    await call.say("what's my balance");
+    await verifyPin(call, "100001", "4821");
+    const bye = await call.say("that's all, thanks");
+    expectText(bye, /scale of 1 to 5/i, "CSAT survey asked when explicitly enabled");
     const done = await call.say("five");
     check("call closes after rating", done.endCall, JSON.stringify(done));
     check("CSAT stored", one(`SELECT csat_score s FROM conversations WHERE id = ?`, call.id)!.s === 5);
-    const after = await post(`/api/calls/${call.id}/turn`, { text: "hello?" });
-    check("ended call can't be continued (409)", after.status === 409, `status ${after.status}`);
+
+    const call2 = await Call.start();
+    await call2.say("what's my balance");
+    await verifyPin(call2, "100001", "4821");
+    const bye2 = await call2.say("no thanks, that's all");
+    expectText(bye2, /scale of 1 to 5/i, "CSAT survey asked at the end");
+    const t2 = await call2.say("yeah, can you please transfer me to a live agent");
+    check("transfers and ends instead of silently closing without a rating", t2.transfer && t2.endCall, JSON.stringify(t2));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call2.id);
+    check("escalation queued, reason CALLER_REQUESTED, caller was verified", e?.reason === "CALLER_REQUESTED" && e.verified === 1, JSON.stringify(e));
+    check("no CSAT score stored (never gave one)", one(`SELECT csat_score s FROM conversations WHERE id = ?`, call2.id)!.s === null);
+
+    setSetting("csatSurveyEnabled", false); // restore the new default for the rest of the suite
   }
 
   console.log("\n3. Make payment — confirm before committing (no, then yes)");
@@ -147,7 +185,7 @@ async function scenarios() {
   console.log("\n4. Plan change — list, choose by speech, confirm");
   {
     const call = await Call.start();
-    await call.say("hi");
+    await call.say("what's my balance");
     await verifyPin(call, "100003", "5560");
     const list = await call.say("I want to upgrade my plan");
     expectText(list, /Fiber 1000 \+ TV for \$130/i, "lists plans with prices");
@@ -161,7 +199,7 @@ async function scenarios() {
   console.log("\n4b. Plan choice with a negation in it; 'no' after 'anything else' ends politely");
   {
     const call = await Call.start();
-    await call.say("hello");
+    await call.say("what's my balance");
     await verifyPin(call, "100001", "4821");
     await call.say("what other plans do you have");
     const confirm = await call.say("the fastest one you have, but I don't need television");
@@ -169,13 +207,13 @@ async function scenarios() {
     const keep = await call.say("no");
     expectText(keep, /haven't changed anything.*anything else/i, "declining the switch keeps the plan");
     const done = await call.say("hmm, actually no, leave it as it is");
-    expectText(done, /scale of 1 to 5/i, "'no' after 'anything else?' closes the call (CSAT)");
+    check("'no' after 'anything else?' closes the call immediately (CSAT off by default)", done.endCall, JSON.stringify(done));
   }
 
   console.log("\n5. Cancel mid-subflow");
   {
     const call = await Call.start();
-    await call.say("hello");
+    await call.say("what's my balance");
     await verifyPin(call, "100003", "5560");
     await call.say("switch my plan");
     const c = await call.say("never mind");
@@ -197,14 +235,28 @@ async function scenarios() {
     check("PAYMENT_PROMISE action scheduled", Boolean(one(`SELECT 1 x FROM call_actions WHERE conversation_id = ? AND type = 'PAYMENT_PROMISE' AND scheduled_for IS NOT NULL`, call.id)));
   }
 
-  console.log("\n7. Outage check — SMS OTP customer in the outage ZIP");
+  console.log("\n7. Outage check in the outage ZIP");
   {
     const call = await Call.start();
     await call.say("my internet isn't working");
-    const otpAsk = await call.say("100008");
-    expectText(otpAsk, /one-time code to your phone/i, "SMS OTP sent");
-    const t = await call.say(await call.otp());
+    await call.say("existing customer");
+    await call.say("residential");
+    await call.say("100008");
+    const t = await call.say("6157");
     expectText(t, /known outage in your area.*6 PM/i, "outage reported instead of troubleshooting");
+  }
+
+  console.log("\n7b. MFA removed entirely (user decision, Sep 29: 'we are not doing MFA'): a customer seeded with EMAIL mfa_method still just verifies by PIN, no MFA prompt at all");
+  {
+    const call = await Call.start();
+    await call.say("what's my balance");
+    await call.say("existing customer");
+    await call.say("residential");
+    const t = await call.say("100004");
+    expectText(t, /4-digit PIN/i, "asks for the PIN directly - no phone-enrollment offer, no email-OTP question");
+    const verified = await call.say("3309");
+    expectText(verified, /verified/i, "PIN verifies a customer whose account is still seeded with EMAIL mfa_method");
+    check("mfa fields on the account are untouched, just unused", one(`SELECT mfa_method m FROM customers WHERE id = 'CUS004'`)!.m === "EMAIL");
   }
 
   console.log("\n8. Tech triage → technician visit (dispatch request)");
@@ -245,6 +297,8 @@ async function scenarios() {
   {
     const call = await Call.start();
     await call.say("what's my balance");
+    await call.say("existing customer");
+    await call.say("residential");
     await call.say("100002");
     const t = await call.say("I want to talk to a representative");
     check("transfers and ends", t.transfer && t.endCall, JSON.stringify(t));
@@ -257,10 +311,10 @@ async function scenarios() {
   console.log("\n11. Honest limits: repeated misunderstanding → offer agent or callback → verified handoff");
   {
     const call = await Call.start();
-    await call.say("hello");
+    await call.say("what's my balance");
     await verifyPin(call, "100001", "4821");
     const first = await call.say("purple elephants");
-    expectText(first, /press or say 1 for your balance/i, "first miss: says so and offers the menu");
+    expectText(first, /didn't quite catch that.*tell me again/i, "first miss: plain re-prompt, no recited menu");
     const second = await call.say("banana hammock");
     expectText(second, /transfer you to a live agent now, or have someone call you back/i, "second miss: offers agent or callback");
     const t = await call.say("an agent please");
@@ -272,7 +326,7 @@ async function scenarios() {
   console.log("\n12. IVR menu fallback (degraded mode): keypad digit");
   {
     const call = await Call.start();
-    await call.say("hi");
+    await call.say("what's my balance");
     await verifyPin(call, "100001", "4821");
     const t = await call.say("1");
     expectText(t, /balance is \$/i, "'1' → balance");
@@ -282,6 +336,8 @@ async function scenarios() {
   {
     const call = await Call.start();
     await call.say("balance");
+    await call.say("existing customer");
+    await call.say("residential");
     await call.say("100001");
     await call.say("1111");
     await call.say("2222");
@@ -296,10 +352,10 @@ async function scenarios() {
     setSetting("greetingPrompt", "Hello from {brand}! {disclosures} How may I help?");
     const call = await Call.start();
     expectText(call.last, /^Hello from Springfield Fiber!.*virtual assistant.*How may I help\?$/, "custom greeting with disclosures filled in");
-    await call.say("hi");
+    await call.say("what's my balance");
     await verifyPin(call, "100003", "5560");
     const t = await call.say("I want to upgrade my plan");
-    expectText(t, /not something I can help with.*live agent/i, "disabled intent: honest limit + escalation offer");
+    expectText(t, /only help with things related to your .* account or service.*live agent/i, "disabled intent: honest limit + escalation offer");
   }
 
   console.log("\n15. Ops dashboard APIs over the calls above (employee session)");
@@ -349,6 +405,87 @@ async function scenarios() {
     check("settings save + greeting preview", good.status === 200 && /Nova/.test(good.json.preview.greeting), JSON.stringify(good.json?.preview));
     const anon = await fetch(`${BASE}/api/settings`);
     check("settings require an employee session", anon.status === 401, `status ${anon.status}`);
+  }
+
+  console.log("\n16. Unknown account number → 3-attempt lockout → routed by the caller's stated topic");
+  {
+    const call = await Call.start();
+    await call.say("what's my due date");
+    await call.say("existing customer");
+    await call.say("residential");
+    const first = await call.say("999999");
+    expectText(first, /couldn't find an account.*2 attempts left/i, "first miss: 2 attempts left");
+    const second = await call.say("999998");
+    expectText(second, /couldn't find an account.*1 attempt left/i, "second miss: 1 attempt left (singular)");
+    const third = await call.say("999997");
+    check("third miss transfers and marks the session FAILED", third.transfer && third.stage === "FAILED", JSON.stringify(third));
+    // Routed by BILLING_DUE_DATE's own code (3023), not the shared general-enquiry one (3014) —
+    // the caller stated a real topic before the lockout, so per-intent routing applies even here.
+    expectText(third, /transferring you to agent 3 0 2 3/i, "speaks BILLING_DUE_DATE's own routing code, not the generic one");
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check(
+      "escalation reason BAN_LOOKUP_FAILED with the per-intent routing code logged",
+      e?.reason === "BAN_LOOKUP_FAILED" && e.intent === "BILLING_DUE_DATE" && e.routing_code === "3023",
+      JSON.stringify(e)
+    );
+  }
+
+  console.log("\n16b. Same lockout, but no real topic was ever stated → falls back to the general-enquiry code");
+  {
+    const call = await Call.start();
+    await call.say("purple elephants"); // 1st unclear: re-prompted, still AWAITING_INTENT
+    await call.say("banana hammock"); // 2nd unclear: retry limit hit, moves on with detected_intent = UNKNOWN
+    await call.say("existing customer");
+    await call.say("residential");
+    await call.say("999999");
+    await call.say("999998");
+    const third = await call.say("999997");
+    expectText(third, /transferring you to agent 3 0 1 4/i, "no real intent captured, falls back to the general-enquiry code");
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check("escalation routing code falls back correctly", e?.routing_code === "3014", JSON.stringify(e));
+  }
+
+  console.log("\n17. New customer, residential — service available → transfer to sign up");
+  {
+    const call = await Call.start();
+    await call.say("is service available in my area");
+    await call.say("new customer");
+    await call.say("residential");
+    const zipReply = await call.say("62701");
+    expectText(zipReply, /available in 62701.*transfer you to get signed up/i, "confirms coverage and offers a transfer");
+    const t = await call.say("yes");
+    check("transfers to sign-up", t.transfer && t.endCall, JSON.stringify(t));
+    expectText(t, /reference code is 3 0 0 0/i, "speaks the new-customer residential code");
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check("escalation reason NEW_CUSTOMER_ENROLLMENT, no customer identified", e?.reason === "NEW_CUSTOMER_ENROLLMENT" && e.customer_id === null, JSON.stringify(e));
+  }
+
+  console.log("\n18. New customer, business — not covered yet → polite close, no transfer");
+  {
+    const call = await Call.start();
+    await call.say("do you serve my area");
+    await call.say("new customer");
+    await call.say("business");
+    const zipReply = await call.say("62706");
+    check("call ends without a transfer", zipReply.endCall === true && !zipReply.transfer, JSON.stringify(zipReply));
+    expectText(zipReply, /isn't available in 62706 yet/i, "tells the caller service isn't available there");
+    check("no escalation logged", !one(`SELECT 1 x FROM escalations WHERE conversation_id = ?`, call.id));
+  }
+
+  console.log("\n19. Multi-account: verified caller switches to a different account mid-call");
+  {
+    const call = await Call.start();
+    await call.say("what's my balance");
+    await verifyPin(call, "100001", "4821"); // Amara Okafor
+    const balanceReply = call.last;
+    expectText(balanceReply, /verified.*balance is/i, "answers for the first account");
+    const switchReply = await call.say("sorry, wrong account — I want to ask about a different account");
+    expectText(switchReply, /what's the other account number/i, "re-prompts for a new account number, still mid-call");
+    check("not re-asked existing/new or residential/business", switchReply.stage === "AWAITING_BAN", JSON.stringify(switchReply));
+    await call.say("100002"); // Ben Torres — straight to BAN, no repeat of the existing/new or residential/business questions
+    const second = await call.say("1197");
+    expectText(second, /verified.*balance is/i, "authenticates and answers for the second account");
+    check("conversation now attributed to the second customer", one(`SELECT customer_id FROM conversations WHERE id = ?`, call.id)?.customer_id === "CUS002");
   }
 }
 

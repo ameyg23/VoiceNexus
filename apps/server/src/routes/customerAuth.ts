@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
-import type { CustomerRow } from "../lib/businessLogic.js";
+import { PLAN_CATALOG, type CustomerRow } from "../lib/businessLogic.js";
 import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
@@ -140,6 +140,12 @@ customerAuthRouter.get("/activity", requireCustomerAuth, (req, res) => {
     assistantName: s.assistantName,
     careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null,
   });
+});
+
+// GET /api/auth/customer/plans — the same catalog the phone AI offers in the PLAN_CHANGE subflow
+// (businessLogic.ts), so "view plans" in the portal always matches what a call would actually offer.
+customerAuthRouter.get("/plans", requireCustomerAuth, (_req, res) => {
+  res.json({ plans: PLAN_CATALOG });
 });
 
 customerAuthRouter.get("/me", requireCustomerAuth, (req, res) => {

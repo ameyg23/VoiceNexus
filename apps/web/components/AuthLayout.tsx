@@ -13,28 +13,42 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     fetchSession()
-      .then((s) => router.replace(s.redirectTo))
-      .catch(() => setChecking(false));
+      .then((s) => {
+        if (!cancelled) router.replace(s.redirectTo);
+      })
+      .catch(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return (
     <div className="flex min-h-screen bg-white">
-      <aside className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 p-12 text-white lg:flex">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="rounded-lg bg-white/15 p-1">
-            <LogoMark className="h-7 w-7" />
-          </span>
+      <aside className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-ink-950 p-12 text-white lg:flex">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+          aria-hidden="true"
+        />
+        <Link href="/" className="relative flex items-center gap-2.5">
+          <LogoMark className="h-7 w-7" />
           <span className="text-lg font-bold">Springfield Fiber</span>
         </Link>
 
-        <div className="max-w-md">
-          <h2 className="text-3xl font-bold leading-tight">Your account, one sign-in away.</h2>
-          <p className="mt-3 text-brand-100">Check your balance, see your next bill, and manage your plan — or call us any time and our AI assistant will help.</p>
-          <ul className="mt-8 space-y-3 text-sm text-brand-50">
+        <div className="relative max-w-md">
+          <span className="kicker text-brand-500">Account access</span>
+          <h2 className="mt-3 text-3xl font-bold leading-tight">
+            Your account, <span className="text-brand-500">one sign-in away.</span>
+          </h2>
+          <p className="mt-3 text-gray-400">Check your balance, see your next bill, and manage your plan, or call us any time and our AI assistant will help.</p>
+          <ul className="mt-8 space-y-3 text-sm text-gray-300">
             {["Balance, due dates and payment history", "Plan and autopay details", "The same PIN verifies you when you call"].map((line) => (
               <li key={line} className="flex items-center gap-2.5">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-600/20 text-brand-500">
                   <CheckIcon className="h-3.5 w-3.5" />
                 </span>
                 {line}
@@ -43,9 +57,9 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
           </ul>
         </div>
 
-        <p className="text-xs text-brand-200">© {new Date().getFullYear()} Springfield Fiber · Powered by VoiceNexus</p>
-        <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -right-10 top-1/3 h-40 w-40 rounded-full bg-white/5" />
+        <p className="relative text-xs text-gray-500">© {new Date().getFullYear()} Springfield Fiber · Powered by VoiceNexus</p>
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-brand-600/10" />
+        <div className="pointer-events-none absolute -right-10 top-1/3 h-40 w-40 rounded-full bg-brand-600/10" />
       </aside>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-8">
@@ -115,7 +129,7 @@ export function SubmitButton({ loading, children, loadingText }: { loading: bool
     <button
       type="submit"
       disabled={loading}
-      className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+      className="btn btn-primary w-full py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
     >
       {loading ? loadingText : children}
     </button>

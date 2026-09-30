@@ -14,6 +14,7 @@ export const INTENT_LABELS: Record<Intent, string> = {
   TECH_TRIAGE: "Tech Triage",
   SCHEDULE_TECH: "Technician Visit",
   SCHEDULE_CALLBACK: "Callback",
+  SERVICE_AVAILABILITY: "Service Availability",
   AGENT_REQUEST: "Agent Request",
   UNKNOWN: "Unknown",
 };
@@ -32,12 +33,13 @@ export const INTENT_PHRASES: Record<Intent, string> = {
   TECH_TRIAGE: "a technical problem",
   SCHEDULE_TECH: "a technician visit",
   SCHEDULE_CALLBACK: "a callback",
+  SERVICE_AVAILABILITY: "whether service is available in their area",
   AGENT_REQUEST: "speaking to an agent",
   UNKNOWN: "an unclear request",
 };
 
 export function intentLabel(intent: Intent | null | undefined): string {
-  return intent ? (INTENT_LABELS[intent] ?? intent) : "—";
+  return intent ? (INTENT_LABELS[intent] ?? intent) : "-";
 }
 
 export const OUTCOME_LABELS: Record<CallOutcome, string> = {
@@ -74,6 +76,8 @@ export const ESCALATION_REASON_LABELS: Record<EscalationReason, string> = {
   VERIFICATION_FAILED: "Verification failed",
   CALLER_REQUESTED: "Caller asked for an agent",
   UNRESOLVED_REQUEST: "Couldn't resolve in-flow",
+  BAN_LOOKUP_FAILED: "Account number not found (3 attempts)",
+  NEW_CUSTOMER_ENROLLMENT: "New customer sign-up",
 };
 
 export const ESCALATION_STATUS_TONES: Record<EscalationStatus, BadgeTone> = {
@@ -91,37 +95,37 @@ export const ACTION_LABELS: Record<CallActionType, string> = {
 };
 
 export function formatDateOnly(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 export function formatRate(r: number | null | undefined): string {
-  return r === null || r === undefined ? "—" : `${(r * 100).toFixed(1)}%`;
+  return r === null || r === undefined ? "-" : `${(r * 100).toFixed(1)}%`;
 }
 
 export function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "—";
+  if (seconds === null || seconds === undefined) return "-";
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 export function formatTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
 export function formatMoney(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "—";
+  if (n === null || n === undefined) return "-";
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 export function percent(part: number, whole: number): string {
-  return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "—";
+  return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "-";
 }

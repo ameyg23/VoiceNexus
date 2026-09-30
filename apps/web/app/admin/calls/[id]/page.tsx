@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { conversationAudioUrl, fetchConversation, type ConversationDetail } from "../../../../lib/api";
+import { conversationAudioUrl, fetchConversation, fetchDevOtp, type ConversationDetail } from "../../../../lib/api";
 import { AdminShell, Card, ErrorNote } from "../../../../components/AdminShell";
 import { Badge } from "../../../../components/Badge";
 import { CheckIcon, PersonIcon, WaveformIcon } from "../../../../components/icons";
@@ -25,6 +25,10 @@ export default function CallDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Dev-only: reveal the plaintext OTP for local testing (the audit trail above only ever shows the
+  // masked destination + status). Replaces the old standalone /demo/otp-console page.
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [devOtpError, setDevOtpError] = useState<string | null>(null);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -48,9 +52,19 @@ export default function CallDetailPage() {
   const c = detail?.conversation;
   const live = c?.outcome === "IN_PROGRESS";
 
+  async function handleRevealOtp() {
+    setDevOtpError(null);
+    try {
+      const { code } = await fetchDevOtp(id);
+      setDevOtp(code);
+    } catch {
+      setDevOtpError("No pending code for this call.");
+    }
+  }
+
   return (
     <AdminShell
-      title={`Call Details — ${id}`}
+      title={`Call Details: ${id}`}
       subtitle={
         <Link href="/admin/calls" className="font-medium text-brand-600 hover:text-brand-700">
           ← All calls
@@ -58,11 +72,7 @@ export default function CallDetailPage() {
       }
       actions={
         c?.hasAudio && (
-          <a
-            href={conversationAudioUrl(c.id)}
-            download={c.id}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-          >
+          <a href={conversationAudioUrl(c.id)} download={c.id} className="btn btn-secondary px-4 py-2.5 text-sm">
             ⇩ Download
           </a>
         )
@@ -77,9 +87,9 @@ export default function CallDetailPage() {
             </Tile>
             <Tile label="Duration">{formatDuration(c.durationSeconds)}</Tile>
             <Tile label="Intent">{intentLabel(c.detectedIntent)}</Tile>
-            <Tile label="Resolved by">{c.outcome === "ESCALATED" ? "Agent" : c.outcome === "CALLBACK" ? "Callback" : c.outcome === "RESOLVED" ? "VoiceNexus" : "—"}</Tile>
+            <Tile label="Resolved by">{c.outcome === "ESCALATED" ? "Agent" : c.outcome === "CALLBACK" ? "Callback" : c.outcome === "RESOLVED" ? "VoiceNexus" : "-"}</Tile>
             <Tile label="Verified by">{c.authMethod ? AUTH_METHOD_LABELS[c.authMethod] : "Not verified"}</Tile>
-            <Tile label="CSAT">{c.csatScore ? `${c.csatScore}/5` : "—"}</Tile>
+            <Tile label="CSAT">{c.csatScore ? `${c.csatScore}/5` : "-"}</Tile>
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -142,7 +152,7 @@ export default function CallDetailPage() {
                     <Row label="End Time" value={formatDateTime(c.endTime)} />
                     <Row label="Outcome" value={OUTCOME_LABELS[c.outcome]} />
                     <Row label="Caller number" value={c.ani} />
-                    <Row label="Account (BAN)" value={c.banProvided ?? "—"} />
+                    <Row label="Account (BAN)" value={c.banProvided ?? "-"} />
                     <Row
                       label="Customer"
                       value={
@@ -156,6 +166,7 @@ export default function CallDetailPage() {
                       }
                     />
                     <Row label="Channel" value={c.channel === "PHONE" ? "Phone (Twilio)" : "Demo (browser)"} />
+                    <Row label="Account number attempts" value={String(detail.authSession?.banAttempts ?? 0)} />
                     <Row label="PIN attempts" value={String(detail.authSession?.pinAttempts ?? 0)} />
                     {c.escalationReason && <Row label="Escalation reason" value={ESCALATION_REASON_LABELS[c.escalationReason]} />}
                   </dl>
@@ -169,6 +180,19 @@ export default function CallDetailPage() {
                           <Badge tone={o.status === "VERIFIED" ? "success" : o.status === "FAILED" ? "danger" : "neutral"}>{o.status.toLowerCase()}</Badge>
                         </div>
                       ))}
+                      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <span className="font-medium">Dev:</span>
+                          {devOtp ? (
+                            <span className="font-mono text-sm font-semibold">{devOtp}</span>
+                          ) : (
+                            <button onClick={() => void handleRevealOtp()} className="font-medium underline hover:text-amber-900">
+                              Reveal code
+                            </button>
+                          )}
+                          {devOtpError && <span>{devOtpError}</span>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </Section>
@@ -184,6 +208,16 @@ export default function CallDetailPage() {
                   }
                 >
                   <p className="text-sm text-gray-800">{detail.escalation.summary}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <RoutingFact label="Caller's topic" value={intentLabel(detail.escalation.intent)} />
+                    <RoutingFact label="Routed to" value={detail.escalation.routingCode ?? "-"} mono />
+                    <RoutingFact label="Should've been" value={detail.escalation.expectedRoutingCode} mono />
+                  </div>
+                  {detail.escalation.routingCode && (
+                    <Badge tone={detail.escalation.routingMatch ? "success" : "danger"}>
+                      {detail.escalation.routingMatch ? "Routed correctly" : "Misrouted"}
+                    </Badge>
+                  )}
                   {detail.escalation.notes && <p className="mt-3 text-sm text-gray-500">Agent notes: “{detail.escalation.notes}”</p>}
                   <Link href="/admin/escalations" className="mt-3 inline-block text-sm font-semibold text-brand-600 hover:text-brand-700">
                     Open escalation queue →
@@ -270,6 +304,15 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex justify-between gap-4">
       <dt className="text-gray-500">{label}</dt>
       <dd className="text-right text-gray-900">{value}</dd>
+    </div>
+  );
+}
+
+function RoutingFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-0.5 text-sm font-semibold text-gray-900 ${mono ? "font-mono" : ""}`}>{value}</p>
     </div>
   );
 }
