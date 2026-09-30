@@ -72,14 +72,21 @@ function say(twiml: SayTarget, text: string) {
 }
 
 // Speak `text` inside a <Gather> so the caller can barge in, and loop back to /gather either way
-// (actionOnEmptyResult) so silence is handled server-side too.
-function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string) {
+// (actionOnEmptyResult) so silence is handled server-side too. `patient` widens both timeouts for
+// prompts asking the caller to key in or read out digits (account number, PIN, ZIP) - user request,
+// Sep 30: "3-4 secs gap between each digit should be allowed... so users who don't remember their
+// account number/PIN/ZIP won't be rushed". `timeout` is Twilio's gap-between-digits window for DTMF,
+// not just the wait for the first one, so widening it directly covers someone keying digits slowly.
+// `speechTimeout` swaps from "auto" (Twilio's own variable end-of-speech guess, which can cut off
+// sooner than the plain numeric timeout) to a fixed value, so a caller reading digits out loud one at
+// a time ("one... zero... zero...") gets the same guaranteed pause tolerance either way.
+function promptAndListen(twiml: InstanceType<typeof VoiceResponse>, text: string, opts: { patient?: boolean } = {}) {
   const gather = twiml.gather({
     input: ["speech", "dtmf"],
     action: publicUrl("/api/twilio/gather"),
     method: "POST",
-    speechTimeout: "auto",
-    timeout: 6,
+    speechTimeout: opts.patient ? "4" : "auto",
+    timeout: opts.patient ? 8 : 6,
     language: getSettings().language as "en-US",
     hints: SPEECH_HINTS,
     actionOnEmptyResult: true,
@@ -102,7 +109,11 @@ function speakResult(res: Response, callSid: string, conversationId: string, res
     endConversation(conversationId);
     clearSilenceStreak(callSid);
   } else {
-    promptAndListen(twiml, result.aiText);
+    // AWAITING_BAN/AWAITING_PIN covers the account-number, PIN, and every ZIP-code subflow (new-
+    // customer sign-up, existing-service check, forgot-credentials) - none of those ever run at any
+    // other stage - so this one check is enough to widen pacing for all three kinds of digit entry.
+    const patient = result.stage === "AWAITING_BAN" || result.stage === "AWAITING_PIN";
+    promptAndListen(twiml, result.aiText, { patient });
   }
   sendTwiml(res, twiml);
 }
@@ -151,10 +162,13 @@ twilioRouter.post("/voice", validateTwilioSignature, async (req, res) => {
 const pendingTurns = new Map<string, Promise<TurnResult>>();
 
 // Consecutive-silence tracking, keyed by CallSid (user request, Sep 29: "a customer might ask 56
-// questions... before hanging up wait 5 secs because the user might ask something new"). A caller
-// who pauses to think between questions gets one more ~6s Gather cycle to speak up before the call
-// actually ends — only silence on TWO cycles in a row (no real content in between) is treated as the
-// caller genuinely being done. Reset on any real utterance; cleared wherever the call itself ends.
+// questions... before hanging up wait 5 secs because the user might ask something new"; widened to
+// two check-ins, Sep 30: "if the user is silent for 5-6 secs, ask are you still there... if not ask
+// 1 more time... if not" say a goodbye and hang up). A caller who pauses to think gets two ~6s Gather
+// cycles with a check-in each time to jump back in with a new question — only silence through BOTH
+// check-ins in a row (no real content in between) is treated as the caller genuinely being gone. This
+// applies at any point in the call, on every single <Gather> turn, not just once. Reset on any real
+// utterance; cleared wherever the call itself ends.
 const silenceStreak = new Map<string, number>();
 function clearSilenceStreak(callSid: string) {
   silenceStreak.delete(callSid);
@@ -202,8 +216,14 @@ twilioRouter.post("/gather", validateTwilioSignature, async (req, res) => {
       promptAndListen(twiml, "Are you still there? Let me know if there's anything else I can help with.");
       return sendTwiml(res, twiml);
     }
-    // Silence again right after that check-in — genuinely done.
-    const bye = "Looks like you're all set. Thank you, and have a nice day!";
+    if (streak === 2) {
+      // Still nothing after the first check-in — one more chance before giving up.
+      const twiml = new VoiceResponse();
+      promptAndListen(twiml, "I still can't hear you. Are you still there?");
+      return sendTwiml(res, twiml);
+    }
+    // Silent through both check-ins — genuinely gone.
+    const bye = "I think you're not there. You can call back once you're free. Thank you, and have a nice day.";
     appendTurn(conversationId, "AI", bye);
     endConversation(conversationId);
     clearSilenceStreak(callSid);

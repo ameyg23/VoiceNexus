@@ -82,20 +82,33 @@ async function main() {
   ];
 
   let action = a.action!;
+  const turns = new Map<string, Awaited<ReturnType<typeof turn>>>();
   for (const [label, input, ok] of steps) {
     const t = await turn(action, input);
     check(label, t.status === 200 && ok(t), t.body);
     console.log(`      caller: ${input.SpeechResult ?? input.Digits ?? ""}  →  AI: ${t.says.join(" ")}`);
+    turns.set(label, t);
     if (t.action) action = t.action;
   }
 
   const status = await post("/api/twilio/status", { ...common, CallStatus: "completed", CallDuration: "42" });
   check("status callback accepted", status.status === 204, `got ${status.status}`);
 
-  // First silence checks in rather than hanging up (a caller pausing between questions shouldn't get
-  // cut off — user request, Sep 29: "a customer might ask 56 questions... wait 5 secs"); only silence
-  // AGAIN right after that check-in ends the call. Checked on its own fresh call, since it can't be a
-  // step in the middle of the main flow above.
+  // Digit entry (account number, PIN) gets a wider pause tolerance than normal conversation, so a
+  // caller keying or reading digits slowly isn't rushed (user request, Sep 30: "3-4 secs gap between
+  // each digit should be allowed").
+  const banPrompt = turns.get("residential")!; // this turn's response is what asks for the account number
+  check("account-number prompt widens pacing (timeout=8, speechTimeout=4)", /timeout="8"/.test(banPrompt.body) && /speechTimeout="4"/.test(banPrompt.body), banPrompt.body);
+  const pinPrompt = turns.get("BAN (keypad DTMF)")!; // this turn's response is what asks for the PIN
+  check("PIN prompt widens pacing (timeout=8, speechTimeout=4)", /timeout="8"/.test(pinPrompt.body) && /speechTimeout="4"/.test(pinPrompt.body), pinPrompt.body);
+  const balancePrompt = turns.get("PIN spoken digit-by-digit → verified, balance answered")!; // no longer digit entry - normal pacing
+  check("normal conversation stays at the regular pacing (timeout=6, speechTimeout=auto)", /timeout="6"/.test(balancePrompt.body) && /speechTimeout="auto"/.test(balancePrompt.body), balancePrompt.body);
+
+  // First two silences each check in rather than hanging up (a caller pausing between questions
+  // shouldn't get cut off — user request, Sep 29: "a customer might ask 56 questions... wait 5 secs";
+  // widened to two check-ins, Sep 30: "ask are you still there... if not ask 1 more time... if not"
+  // say goodbye). Only silence through BOTH check-ins in a row ends the call. Checked on its own fresh
+  // call, since it can't be a step in the middle of the main flow above.
   console.log("\nSilence handling (separate call)");
   const silenceCallSid = `CAsmoke${Date.now()}sil`;
   const silenceCommon = { ...common, CallSid: silenceCallSid };
@@ -105,8 +118,11 @@ async function main() {
   check("first silence checks in instead of hanging up", !firstSilence.hangup && /still there/i.test(firstSilence.says.join(" ")), firstSilence.body);
   console.log(`      caller: (silence)  →  AI: ${firstSilence.says.join(" ")}`);
   const secondSilence = await turn(silenceAction, { SpeechResult: "" }, silenceCommon);
-  check("second silence in a row ends the call with the closing line", secondSilence.hangup && /have a nice day/i.test(secondSilence.says.join(" ")), secondSilence.body);
+  check("second silence checks in again, doesn't hang up yet", !secondSilence.hangup && /still there/i.test(secondSilence.says.join(" ")), secondSilence.body);
   console.log(`      caller: (silence again)  →  AI: ${secondSilence.says.join(" ")}`);
+  const thirdSilence = await turn(silenceAction, { SpeechResult: "" }, silenceCommon);
+  check("third silence in a row ends the call with the closing line", thirdSilence.hangup && /call back once you're free.*nice day/i.test(thirdSilence.says.join(" ")), thirdSilence.body);
+  console.log(`      caller: (silence a third time)  →  AI: ${thirdSilence.says.join(" ")}`);
   await post("/api/twilio/status", { ...silenceCommon, CallStatus: "completed", CallDuration: "12" });
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) failed.`}`);
