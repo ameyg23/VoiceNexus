@@ -421,7 +421,11 @@ async function scenarios() {
     check("third miss transfers and marks the session FAILED", third.transfer && third.stage === "FAILED", JSON.stringify(third));
     // Routed by BILLING_DUE_DATE's own code (3023), not the shared general-enquiry one (3014) —
     // the caller stated a real topic before the lockout, so per-intent routing applies even here.
-    expectText(third, /transferring you to agent 3 0 2 3/i, "speaks BILLING_DUE_DATE's own routing code, not the generic one");
+    expectText(
+      third,
+      /transferring you about your billing due date to agent 3 0 2 3/i,
+      "speaks BILLING_DUE_DATE's own routing code AND names the topic, not just the generic one"
+    );
     const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
     check(
       "escalation reason BAN_LOOKUP_FAILED with the per-intent routing code logged",

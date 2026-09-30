@@ -880,6 +880,26 @@ function startCallbackWithNote(ctx: Ctx, note: string): TurnResult {
 // is picked by the caller's actual (first, primary) topic, not one shared bucket for every transfer
 // reason — so a call's transcript can show what queue it *should* have gone to next to what it
 // actually announced, and ops can spot a misroute at a glance (user request).
+// Natural, spoken description of what the caller was calling about — said back alongside the routing
+// code on transfer (user request, Sep 30: "the customer should be sure they're being routed for the
+// correct intent"). AGENT_REQUEST/UNKNOWN are deliberately omitted: "transferring you about talking to
+// an agent" is circular, and there's nothing concrete to name when nothing was ever understood.
+const INTENT_TRANSFER_TOPIC: Partial<Record<Intent, string>> = {
+  CHECK_BALANCE: "checking your balance",
+  MAKE_PAYMENT: "making a payment",
+  PAYMENT_HISTORY: "a past payment",
+  BILLING_DUE_DATE: "your billing due date",
+  PAYMENT_PROMISE: "a payment arrangement",
+  PLAN_INFO: "your plan",
+  PLAN_CHANGE: "changing your plan",
+  AUTOPAY_STATUS: "autopay",
+  OUTAGE_CHECK: "a service outage",
+  TECH_TRIAGE: "a technical issue",
+  SCHEDULE_TECH: "booking a technician visit",
+  SCHEDULE_CALLBACK: "a callback",
+  SERVICE_AVAILABILITY: "service availability",
+};
+
 function escalationReply(ctx: Ctx, reason: EscalationReason): TurnResult {
   const intent = storedIntent(ctx.conversationId);
   const code = routingCodeForIntent(ctx.settings, intent);
@@ -893,7 +913,9 @@ function escalationReply(ctx: Ctx, reason: EscalationReason): TurnResult {
   const context = verified
     ? "I've captured a summary of our conversation, so you won't have to repeat yourself."
     : "I've passed along what you've told me so far; the agent will verify your identity first.";
-  return reply(ctx, `${intro} ${context} Transferring you to agent ${spokenDigits(code)}.`, { endCall: true, transfer: true });
+  const topic = intent ? INTENT_TRANSFER_TOPIC[intent] : undefined;
+  const about = topic ? ` about ${topic}` : "";
+  return reply(ctx, `${intro} ${context} Transferring you${about} to agent ${spokenDigits(code)}.`, { endCall: true, transfer: true });
 }
 
 // New (not-yet-a-customer) caller, after confirming they want to sign up — same "announce a code,
