@@ -484,6 +484,12 @@ export function purchasePlan(planName: string) {
   return authFetch<{ ban: string; pin: string; planName: string }>("/api/auth/customer/purchase-plan", { planName });
 }
 
+// Self-service plan switch on the existing session - no re-auth. The existing balance carries over;
+// an upgrade adds the price difference on top (fake proration, no real billing gateway in this POC).
+export function switchPlan(planName: string) {
+  return authFetch<{ planName: string; charged: number; newBalance: number }>("/api/auth/customer/switch-plan", { planName });
+}
+
 export function customerLogin(email: string, password: string) {
   return authFetch<{ customer: CustomerAccount }>("/api/auth/customer/login", { email, password });
 }

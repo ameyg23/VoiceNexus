@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import { nextCustomerId, nextBan } from "../lib/ids.js";
 import { hashPassword, verifyPassword, setCustomerSession, clearCustomerSession, requireCustomerAuth } from "../lib/auth.js";
-import { PLAN_CATALOG, findPlan, isServiceAvailable, type CustomerRow } from "../lib/businessLogic.js";
+import { PLAN_CATALOG, findPlan, isServiceAvailable, applyPlanChange, type CustomerRow } from "../lib/businessLogic.js";
 import { describeAction, safeJson, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
@@ -193,6 +193,32 @@ customerAuthRouter.get("/activity", requireCustomerAuth, (req, res) => {
 // (businessLogic.ts), so "view plans" in the portal always matches what a call would actually offer.
 customerAuthRouter.get("/plans", requireCustomerAuth, (_req, res) => {
   res.json({ plans: PLAN_CATALOG });
+});
+
+const switchPlanSchema = z.object({ planName: z.string().min(1) });
+
+// POST /api/auth/customer/switch-plan — self-service plan switch on the existing session, no re-auth
+// (user request, Sep 30: "while switching the plan they dont have to sign in again or signup again").
+// Same proration logic and same applyPlanChange() the phone PLAN_CHANGE subflow uses, so a switch
+// behaves identically on both channels - the existing balance carries over, and an upgrade adds the
+// price difference on top (a downgrade adds nothing). Scoped to the caller's own audience, matching
+// what the portal's "Available plans" section already only shows them.
+customerAuthRouter.post("/switch-plan", requireCustomerAuth, (req, res) => {
+  const parsed = switchPlanSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const customerId = req.customer!.customerId;
+  const row = db.prepare(`SELECT * FROM customers WHERE id = @id`).get({ "@id": customerId }) as CustomerRow | undefined;
+  if (!row) return res.status(401).json({ error: "not authenticated" });
+  if (row.account_status !== "ACTIVE") return res.status(400).json({ error: "no active plan to switch from yet" });
+
+  const target = findPlan(parsed.data.planName);
+  if (!target) return res.status(400).json({ error: "unknown plan" });
+  if (target.audience !== row.customer_type) return res.status(400).json({ error: "that plan isn't available for this account type" });
+  if (target.name === row.plan_name) return res.status(400).json({ error: "already on this plan" });
+
+  const { newBalance, charged } = applyPlanChange(customerId, target.name);
+  res.json({ planName: target.name, charged, newBalance });
 });
 
 // GET /api/auth/customer/service-availability?zip=XXXXX&accountType=RESIDENTIAL|BUSINESS — the same

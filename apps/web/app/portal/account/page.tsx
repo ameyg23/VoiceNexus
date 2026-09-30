@@ -7,6 +7,7 @@ import {
   customerMe,
   customerActivity,
   fetchCustomerPlans,
+  switchPlan,
   type CustomerAccount,
   type CustomerActivity,
   type PlanInfo,
@@ -47,6 +48,10 @@ export default function PortalAccountPage() {
   const [activity, setActivity] = useState<CustomerActivity | null>(null);
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState<PlanInfo | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const [switchNote, setSwitchNote] = useState<string | null>(null);
 
   useEffect(() => {
     customerMe()
@@ -64,6 +69,26 @@ export default function PortalAccountPage() {
   async function handleLogout() {
     await logout();
     router.push("/login");
+  }
+
+  async function handleConfirmSwitch() {
+    if (!switchTarget) return;
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      const result = await switchPlan(switchTarget.name);
+      setCustomer((c) => (c ? { ...c, planName: result.planName, currentBalance: result.newBalance } : c));
+      setSwitchNote(
+        result.charged > 0
+          ? `You're now on ${result.planName}. We've added ${formatMoney(result.charged)} to your balance for the upgrade.`
+          : `You're now on ${result.planName}.`
+      );
+      setSwitchTarget(null);
+    } catch {
+      setSwitchError("Couldn't switch your plan just now. Please try again.");
+    } finally {
+      setSwitching(false);
+    }
   }
 
   if (!customer) {
@@ -159,11 +184,17 @@ export default function PortalAccountPage() {
 
         {/* Plans / upgrade - scoped to the customer's own account type (residential or business are
             separate product lines, see PLAN_CATALOG; a residential account never sees business plans
-            here, matching what the phone PLAN_CHANGE flow would actually offer, and vice versa). */}
+            here, matching what the phone PLAN_CHANGE flow would actually offer, and vice versa).
+            Self-service switch on the existing session, no re-auth (user request, Sep 30: "while
+            switching the plan they dont have to sign in again or signup again") - the balance carries
+            over and an upgrade adds the price difference on top (fake proration, same logic the phone
+            PLAN_CHANGE subflow uses - see businessLogic.ts::applyPlanChange). */}
         <section id="plans" className="mt-8">
           <span className="kicker">Plans</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Available plans</h2>
-          <p className="mt-1 text-sm text-gray-500">Want to change plans? Call customer care below and we'll take care of it on the spot.</p>
+          <p className="mt-1 text-sm text-gray-500">Switch any time - no need to sign in again. Upgrading adds the price difference to your balance.</p>
+          {switchNote && <p className="mt-3 rounded-lg bg-green-50 px-3.5 py-2.5 text-sm text-green-700">{switchNote}</p>}
+          {switchError && <p className="mt-3 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{switchError}</p>}
           {!plans ? (
             <p className="mt-4 text-sm text-gray-400">Loading…</p>
           ) : (
@@ -182,9 +213,9 @@ export default function PortalAccountPage() {
                     <p className="mt-1 text-xl font-bold text-brand-600">{formatMoney(p.monthlyPrice)}<span className="text-sm font-medium text-gray-500">/mo</span></p>
                     <p className="mt-1 text-sm text-gray-600">{p.description}</p>
                     {!isCurrent && (
-                      <a href="#support" className="btn btn-secondary mt-3 w-full px-3 py-2 text-sm">
-                        Call to switch
-                      </a>
+                      <button onClick={() => setSwitchTarget(p)} className="btn btn-secondary mt-3 w-full px-3 py-2 text-sm">
+                        Switch to this plan
+                      </button>
                     )}
                   </div>
                 );
@@ -192,6 +223,21 @@ export default function PortalAccountPage() {
             </div>
           )}
         </section>
+
+        <ConfirmDialog
+          open={switchTarget !== null}
+          title={`Switch to ${switchTarget?.name}?`}
+          message={
+            switchTarget && currentPlan
+              ? Math.max(0, switchTarget.monthlyPrice - currentPlan.monthlyPrice) > 0
+                ? `This adds ${formatMoney(Math.max(0, switchTarget.monthlyPrice - currentPlan.monthlyPrice))} to your balance for the upgrade, starting with your next bill.`
+                : `Your balance carries over as-is - no extra charge for this switch.`
+              : "Your balance carries over to the new plan."
+          }
+          confirmLabel={switching ? "Switching…" : "Switch plan"}
+          onConfirm={() => void handleConfirmSwitch()}
+          onCancel={() => setSwitchTarget(null)}
+        />
 
         <div className="mt-8 grid items-start gap-4 lg:grid-cols-2">
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">

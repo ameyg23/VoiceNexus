@@ -178,8 +178,25 @@ export function matchPlanFromText(text: string, audience: CustomerType = "RESIDE
   return null;
 }
 
-export function applyPlanChange(customerId: string, planName: string): void {
-  db.prepare(`UPDATE customers SET plan_name = @plan WHERE id = @id`).run({ "@plan": planName, "@id": customerId });
+// Simulated proration, same "fake money, real logic" posture as applyPayment/MAKE_PAYMENT - no real
+// billing gateway exists in this POC (user request, Sep 30: "let's keep the money thing as fake").
+// The existing balance always carries over to the new plan (it's not wiped by switching); on an
+// upgrade, the price difference is added on top so the customer owes the gap immediately rather than
+// waiting for a bill to catch up. A downgrade adds nothing - no credit/refund model, just no charge.
+// Shared by both channels (phone PLAN_CHANGE and the web portal's self-service switch) so a plan
+// switch behaves identically either way.
+export function applyPlanChange(customerId: string, planName: string): { newBalance: number; charged: number } {
+  const customer = findCustomerById(customerId)!;
+  const currentPrice = findPlan(customer.plan_name)?.monthlyPrice ?? 0;
+  const targetPrice = findPlan(planName)?.monthlyPrice ?? 0;
+  const charged = Math.max(0, targetPrice - currentPrice);
+  const newBalance = customer.current_balance + charged;
+  db.prepare(`UPDATE customers SET plan_name = @plan, current_balance = @balance WHERE id = @id`).run({
+    "@plan": planName,
+    "@balance": newBalance,
+    "@id": customerId,
+  });
+  return { newBalance, charged };
 }
 
 export function applyPayment(customerId: string, amount: number): void {

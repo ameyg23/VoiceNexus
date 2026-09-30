@@ -191,9 +191,12 @@ async function scenarios() {
     expectText(list, /Fiber 1000 \+ TV for \$130/i, "lists plans with prices");
     const confirm = await call.say("the one gig plan with TV");
     expectText(confirm, /switch you from .* to Fiber 1000 \+ TV/i, "restates the change before committing");
+    expectText(confirm, /adds \$85\.00 to your balance/i, "upgrade charge (Cable Basic $45 -> Fiber 1000+TV $130) previewed before confirming");
     const done = await call.say("yes");
     expectText(done, /now on Fiber 1000 \+ TV/i, "plan changed");
+    expectText(done, /added \$85\.00 to your balance, which is now \$85\.00/i, "upgrade charge actually applied, fake proration (Sep 30)");
     check("plan updated in DB", one(`SELECT plan_name p FROM customers WHERE id = 'CUS003'`)!.p === "Fiber 1000 + TV");
+    check("balance charged the price difference in DB", one(`SELECT current_balance b FROM customers WHERE id = 'CUS003'`)!.b === 85);
   }
 
   console.log("\n4b. Plan choice with a negation in it; 'no' after 'anything else' ends politely");
@@ -651,6 +654,39 @@ async function scenarios() {
     const purchaseJson = await purchase.json();
     check("signup immediately followed by purchase-plan (same session) activates the account", purchase.status === 201 && /^BAN\d+$/.test(purchaseJson.ban), JSON.stringify(purchaseJson));
     check("customer_type set from the plan bought", one(`SELECT customer_type t FROM customers WHERE email = ?`, email)!.t === "RESIDENTIAL");
+
+    db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
+  }
+
+  console.log("\n24. Self-service web plan switch - no re-auth, fake proration (Sep 30)");
+  {
+    const email = `switcher-${Date.now()}@example.com`;
+    const signupRes = await fetch(`${BASE}/api/auth/customer/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Plan Switcher", email, password: "switch-test-pass" }),
+    });
+    const cookie = (signupRes.headers.getSetCookie().find((c) => c.startsWith("vn_customer_session=")) ?? "").split(";")[0];
+    const api = async (p: string, init: RequestInit = {}) => {
+      const res = await fetch(`${BASE}${p}`, { ...init, headers: { "Content-Type": "application/json", cookie, ...(init.headers ?? {}) } });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+
+    await api("/api/auth/customer/purchase-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 300" }) }); // $55, balance starts at $0
+
+    // Same cookie the whole way through - no login/signup call in between - proves "no re-auth needed".
+    const upgrade = await api("/api/auth/customer/switch-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 1000" }) }); // $90, +$35
+    check("upgrade succeeds on the same session, no re-login", upgrade.status === 200 && upgrade.json.charged === 35 && upgrade.json.newBalance === 35, JSON.stringify(upgrade.json));
+    check("balance actually charged in the DB", one(`SELECT current_balance b FROM customers WHERE email = ?`, email)!.b === 35);
+
+    const downgrade = await api("/api/auth/customer/switch-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 300" }) }); // $55, no charge on a downgrade
+    check("downgrade adds no charge, balance untouched", downgrade.status === 200 && downgrade.json.charged === 0 && downgrade.json.newBalance === 35, JSON.stringify(downgrade.json));
+
+    const wrongAudience = await api("/api/auth/customer/switch-plan", { method: "POST", body: JSON.stringify({ planName: "Business 500" }) });
+    check("can't switch to a plan from the other audience", wrongAudience.status === 400, JSON.stringify(wrongAudience.json));
+
+    const samePlan = await api("/api/auth/customer/switch-plan", { method: "POST", body: JSON.stringify({ planName: "Fiber 300" }) });
+    check("can't 'switch' to the plan already on", samePlan.status === 400, JSON.stringify(samePlan.json));
 
     db.prepare(`DELETE FROM customers WHERE email = @e`).run({ "@e": email });
   }

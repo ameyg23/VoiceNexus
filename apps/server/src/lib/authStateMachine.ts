@@ -595,10 +595,12 @@ function planOptionsText(customer: CustomerRow): string {
 function confirmPlan(ctx: Ctx, customer: CustomerRow, planName: string): TurnResult {
   const target = findPlan(planName)!;
   const current = findPlan(customer.plan_name);
+  const charge = Math.max(0, target.monthlyPrice - (current?.monthlyPrice ?? 0));
   setSubflow(ctx.conversationId, { type: "PLAN_CHANGE", step: "CONFIRM", plan: target.name });
+  const chargeNote = charge > 0 ? ` This adds ${money(charge)} to your balance for the upgrade.` : "";
   return reply(
     ctx,
-    `Just to confirm: switch you from ${customer.plan_name}${current ? `, at $${current.monthlyPrice} a month,` : ""} to ${target.name} at $${target.monthlyPrice} a month, starting with your next bill? Please say yes to confirm.`
+    `Just to confirm: switch you from ${customer.plan_name}${current ? `, at $${current.monthlyPrice} a month,` : ""} to ${target.name} at $${target.monthlyPrice} a month, starting with your next bill?${chargeNote} Please say yes to confirm.`
   );
 }
 
@@ -825,10 +827,11 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
         return reply(ctx, `Should I switch you to ${sf.plan}? Please say yes or no.`);
       }
       const target = findPlan(sf.plan)!;
-      applyPlanChange(customer.id, target.name);
-      recordAction(ctx.conversationId, customer.id, "PLAN_CHANGE", "COMPLETED", { fromPlan: customer.plan_name, toPlan: target.name, monthlyPrice: target.monthlyPrice });
+      const { newBalance, charged } = applyPlanChange(customer.id, target.name);
+      recordAction(ctx.conversationId, customer.id, "PLAN_CHANGE", "COMPLETED", { fromPlan: customer.plan_name, toPlan: target.name, monthlyPrice: target.monthlyPrice, charged });
       setSubflow(ctx.conversationId, null);
-      return reply(ctx, `You're all set. You're now on ${target.name} at $${target.monthlyPrice} a month, starting with your next bill. ${ANYTHING_ELSE}`);
+      const chargeNote = charged > 0 ? ` We've added ${money(charged)} to your balance, which is now ${money(newBalance)}.` : "";
+      return reply(ctx, `You're all set. You're now on ${target.name} at $${target.monthlyPrice} a month, starting with your next bill.${chargeNote} ${ANYTHING_ELSE}`);
     }
 
     case "PAYMENT_PROMISE": {
