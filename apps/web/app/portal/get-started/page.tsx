@@ -107,10 +107,10 @@ export default function GetStartedPage() {
             <div className="mx-auto mt-6 flex max-w-sm flex-col gap-3 sm:flex-row">
               <div className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Account number</p>
-                <p className="mt-1 font-mono text-lg font-bold text-gray-900">{purchased.ban}</p>
+                <p className="mt-1 font-mono text-lg font-bold text-gray-900">{purchased.ban.replace(/^BAN/, "")}</p>
               </div>
               <div className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Phone PIN</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Account PIN</p>
                 <p className="mt-1 font-mono text-lg font-bold text-gray-900">{purchased.pin}</p>
               </div>
             </div>
@@ -170,7 +170,7 @@ export default function GetStartedPage() {
               <span className="kicker">Plans</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Choose a plan to get started</h2>
               <p className="mt-2 max-w-2xl text-sm text-gray-600">
-                Pick a plan to activate your service. You'll get an account number and a phone PIN right away, so you can start using your account and
+                Pick a plan to activate your service. You'll get an account number and an account PIN right away, so you can start using your account and
                 calling in for support immediately.
               </p>
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}

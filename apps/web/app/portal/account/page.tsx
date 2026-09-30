@@ -20,7 +20,7 @@ import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../.
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What do I need on hand when I call?",
-    a: "Your account number (BAN) and your 4-digit phone PIN, the ones you were given when you signed up for service. Our assistant verifies you with these before sharing any account details.",
+    a: "Your account number and your 4-digit account PIN, the ones you were given when you signed up for service. Our assistant verifies you with these before sharing any account details.",
   },
   {
     q: "What can the automated assistant help with?",
@@ -108,7 +108,7 @@ export default function PortalAccountPage() {
         <span className="kicker">Your account</span>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Hi, {customer.name.split(" ")[0]}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Account <span className="font-mono font-medium text-gray-700">{customer.ban}</span> · {customer.planName}
+          Account <span className="font-mono font-medium text-gray-700">{customer.ban.replace(/^BAN/, "")}</span> · {customer.planName}
         </p>
 
         {pastDue && (
@@ -257,7 +257,7 @@ export default function PortalAccountPage() {
               context.
             </p>
             <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/85">
-              Have your account number <span className="font-mono font-semibold">{customer.ban}</span> and your 4-digit PIN ready.
+              Have your account number <span className="font-mono font-semibold">{customer.ban.replace(/^BAN/, "")}</span> and your 4-digit PIN ready.
             </p>
           </div>
 
