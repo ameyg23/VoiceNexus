@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { logout, employeeMe, type EmployeeAccount } from "../lib/api";
 import { Sidebar } from "./Sidebar";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { LogoMark, MenuIcon } from "./icons";
 
 // Every /admin page renders inside this: it checks the employee session once,
@@ -23,6 +24,7 @@ export function AdminShell({
   const router = useRouter();
   const [employee, setEmployee] = useState<EmployeeAccount | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +51,15 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => void handleLogout()} open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <Sidebar orgName="Springfield Fiber" employeeName={employee.name} onLogout={() => setConfirmingLogout(true)} open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Log out?"
+        message="You'll need to sign in again to get back to the dashboard."
+        confirmLabel="Log out"
+        onConfirm={() => void handleLogout()}
+        onCancel={() => setConfirmingLogout(false)}
+      />
       {menuOpen && <div className="fixed inset-0 z-30 bg-gray-900/30 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex items-center gap-3 bg-ink-950 px-4 py-3 lg:hidden">

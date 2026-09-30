@@ -96,8 +96,13 @@ export function Sidebar({
           <p className="truncate text-sm font-semibold text-white">{orgName}</p>
           <p className="truncate text-xs text-gray-400">{employeeName}</p>
         </div>
-        <button onClick={onLogout} title="Sign out" aria-label="Sign out" className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-white/10 hover:text-white">
-          <LogoutIcon className="h-5 w-5" />
+        <button
+          onClick={onLogout}
+          aria-label="Log out"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-gray-400 hover:bg-white/10 hover:text-white"
+        >
+          <LogoutIcon className="h-4 w-4" />
+          Logout
         </button>
       </div>
     </aside>

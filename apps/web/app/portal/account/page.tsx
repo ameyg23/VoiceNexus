@@ -12,6 +12,7 @@ import {
   type PlanInfo,
 } from "../../../lib/api";
 import { Badge } from "../../../components/Badge";
+import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { CustomerCallWidget } from "../../../components/CustomerCallWidget";
 import { LogoMark, PhoneIcon, CalendarIcon, CheckIcon, LogoutIcon, HeadsetIcon, ArrowRightIcon } from "../../../components/icons";
 import { ACTION_LABELS, formatDateOnly, formatDateTime, formatMoney } from "../../../lib/format";
@@ -44,6 +45,7 @@ export default function PortalAccountPage() {
   const [activity, setActivity] = useState<CustomerActivity | null>(null);
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   useEffect(() => {
     customerMe()
@@ -81,12 +83,20 @@ export default function PortalAccountPage() {
               <HeadsetIcon className="h-4 w-4" />
               Support
             </a>
-            <button onClick={() => void handleLogout()} className="btn whitespace-nowrap border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10">
+            <button onClick={() => setConfirmingLogout(true)} className="btn whitespace-nowrap border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10">
               <LogoutIcon className="h-4 w-4" />
               Sign out
             </button>
           </div>
         </div>
+        <ConfirmDialog
+          open={confirmingLogout}
+          title="Sign out?"
+          message="You'll need to sign in again to get back to your account."
+          confirmLabel="Sign out"
+          onConfirm={() => void handleLogout()}
+          onCancel={() => setConfirmingLogout(false)}
+        />
         <div className="h-[3px] bg-brand-600" />
       </header>
 
