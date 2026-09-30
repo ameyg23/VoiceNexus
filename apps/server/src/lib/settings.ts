@@ -60,7 +60,7 @@ export type TenantSettings = z.infer<typeof settingsSchema>;
 
 export const DEFAULT_SETTINGS: TenantSettings = {
   brandName: "Springfield Fiber",
-  assistantName: "Ava",
+  assistantName: "AI agent",
   voiceTone: "warm, friendly, professional and concise",
   language: "en-US",
   phoneVoice: "Polly.Joanna",
