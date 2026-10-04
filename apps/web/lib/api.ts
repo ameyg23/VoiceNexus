@@ -454,6 +454,12 @@ export function fetchCustomerVoiceToken() {
   return authFetch<{ token: string; careLineNumber: string | null }>("/api/twilio/customer-token");
 }
 
+// Same shape again, but for an anonymous visitor on the public homepage — no session at all, so the
+// server rate-limits this one by IP instead (routes/twilio.ts).
+export function fetchPublicVoiceToken() {
+  return authFetch<{ token: string; careLineNumber: string | null }>("/api/twilio/public-token");
+}
+
 // --- Customer portal auth — separate httpOnly cookie session; unrelated to the phone-call
 // BAN+PIN/OTP auth (authStateMachine.ts), which stays server-side-gated during a call. ---
 

@@ -22,6 +22,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const app = express();
+// Behind nginx in production (deploy/nginx.conf.example) req.ip would otherwise always read as
+// nginx's own loopback address — trusting just the loopback hop lets Express read the real visitor IP
+// from X-Forwarded-For, which the public (unauthenticated) Twilio token endpoint rate-limits by.
+app.set("trust proxy", "loopback");
 // credentials:true + an explicit origin (not "*") is required for the browser to send/accept the
 // httpOnly session cookies set by employeeAuth.ts/customerAuth.ts across the :3000 -> :4000 origin gap.
 app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:3000", credentials: true }));

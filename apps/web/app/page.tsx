@@ -6,6 +6,7 @@ import { fetchDemoConfig, fetchPublicPlans, checkPublicAvailability, type DemoCo
 import { PLAN_BADGES, GET_STARTED_FAQS } from "../lib/marketingContent";
 import { MarketingSections } from "../components/MarketingSections";
 import { FaqAccordion } from "../components/FaqAccordion";
+import { CustomerCallWidget } from "../components/CustomerCallWidget";
 import { LogoMark, PhoneIcon, HeadsetIcon } from "../components/icons";
 import { formatMoney } from "../lib/format";
 
@@ -231,8 +232,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Support - a plain number + tel: link, not the interactive browser-calling widget (that
-            needs a signed-in customer session, which an anonymous visitor doesn't have yet). */}
+        {/* Support - in-browser calling widget, same component the logged-in portal uses, just backed
+            by the rate-limited public token endpoint instead of a customer session (Oct 4, user: a
+            tel: link here popped an OS "which app" picker instead of just calling in-browser like the
+            portal already does). */}
         <section id="support" className="mt-12 scroll-mt-6">
           <span className="kicker">Prefer to talk it through?</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Call customer support</h2>
@@ -240,11 +243,7 @@ export default function HomePage() {
             <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/80">
               <PhoneIcon className="h-4 w-4" /> Call customer care
             </p>
-            {careLine && (
-              <a href={`tel:${careLine}`} className="mt-2 block text-2xl font-bold text-white hover:underline">
-                {careLine}
-              </a>
-            )}
+            <CustomerCallWidget careLineNumber={careLine} audience="public" />
             <p className="mt-3 max-w-lg text-sm text-white/85">
               <HeadsetIcon className="mr-1 inline h-4 w-4 align-text-bottom" />
               Our assistant answers first and can check service availability, walk you through plans, and get you signed up right over the phone.

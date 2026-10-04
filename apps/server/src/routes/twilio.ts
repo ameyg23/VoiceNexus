@@ -18,6 +18,7 @@
 // auth guard and JWT identity prefix; both hit the same TwiML App / client-voice webhook below.
 
 import express, { Router, type Request, type Response, type NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 import twilio from "twilio";
 import { db } from "@voice-nexus/db";
 import { advanceAuthSession, type TurnResult } from "../lib/authStateMachine.js";
@@ -310,6 +311,46 @@ twilioRouter.get("/token", requireEmployeeAuth, (req, res) => {
   const { AccessToken } = twilio.jwt;
   const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, {
     identity: `employee-${req.employee!.employeeId}`,
+    ttl: 3600,
+  });
+  token.addGrant(new AccessToken.VoiceGrant({ outgoingApplicationSid: TWILIO_TWIML_APP_SID, incomingAllow: false }));
+  res.json({ token: token.toJwt(), careLineNumber: process.env.TWILIO_CARE_LINE_NUMBER ?? null });
+});
+
+// In-memory per-IP rate limit for the public (unauthenticated) token endpoint below — the only
+// Twilio-calling surface with no login at all behind it, so it needs its own abuse guard instead of
+// the implicit one a real account provides. Not persisted (resets on restart) — fine for a POC, not
+// meant to survive a multi-instance deployment.
+const publicTokenRequests = new Map<string, number[]>(); // ip -> request timestamps (ms)
+const PUBLIC_TOKEN_WINDOW_MS = 10 * 60 * 1000;
+const PUBLIC_TOKEN_MAX_PER_WINDOW = 3;
+
+function publicTokenRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const recent = (publicTokenRequests.get(ip) ?? []).filter((t) => now - t < PUBLIC_TOKEN_WINDOW_MS);
+  const limited = recent.length >= PUBLIC_TOKEN_MAX_PER_WINDOW;
+  recent.push(now);
+  publicTokenRequests.set(ip, recent);
+  return limited;
+}
+
+// GET /api/twilio/public-token — same shape as /token and /customer-token above, but for an anonymous
+// visitor on the public homepage (user request, Oct 4: the homepage's "Call customer care" used a plain
+// tel: link, which popped an OS app-chooser dialog instead of the in-browser widget the portal already
+// has). No account backs this one at all, so it's rate-limited per IP — otherwise anyone with the URL
+// could mint unlimited tokens and place real, credit-consuming Twilio calls with zero gate.
+twilioRouter.get("/public-token", (req, res) => {
+  if (publicTokenRateLimited(req.ip ?? "unknown")) {
+    return res.status(429).json({ error: "Too many call attempts. Please try again in a few minutes." });
+  }
+  const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_TWIML_APP_SID } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWILIO_TWIML_APP_SID) {
+    return res.status(503).json({ error: "Voice SDK not configured. Run apps/server/scripts/twilio-setup.ts first" });
+  }
+
+  const { AccessToken } = twilio.jwt;
+  const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, {
+    identity: `anon-${randomUUID()}`,
     ttl: 3600,
   });
   token.addGrant(new AccessToken.VoiceGrant({ outgoingApplicationSid: TWILIO_TWIML_APP_SID, incomingAllow: false }));

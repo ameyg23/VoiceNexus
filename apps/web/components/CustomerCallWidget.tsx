@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Call, Device } from "@twilio/voice-sdk";
-import { fetchCustomerVoiceToken } from "../lib/api";
+import { fetchCustomerVoiceToken, fetchPublicVoiceToken } from "../lib/api";
 import { formatDuration } from "../lib/format";
 
 // Real WebRTC calling from the customer portal, straight to the care line's IVR (user request, Sep
@@ -26,7 +26,17 @@ const PHASE_LABEL: Record<Phase, string> = {
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-export function CustomerCallWidget({ careLineNumber }: { careLineNumber: string | null }) {
+// `audience` picks which token endpoint backs the call: "customer" (default, portal — requireCustomerAuth,
+// no per-IP limit needed since a real account already gates it) or "public" (anonymous homepage visitor —
+// rate-limited by IP server-side instead, see routes/twilio.ts).
+export function CustomerCallWidget({
+  careLineNumber,
+  audience = "customer",
+}: {
+  careLineNumber: string | null;
+  audience?: "customer" | "public";
+}) {
+  const fetchToken = audience === "public" ? fetchPublicVoiceToken : fetchCustomerVoiceToken;
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -59,11 +69,11 @@ export function CustomerCallWidget({ careLineNumber }: { careLineNumber: string 
 
   async function getDevice(): Promise<Device> {
     if (deviceRef.current) return deviceRef.current;
-    const { token } = await fetchCustomerVoiceToken();
+    const { token } = await fetchToken();
     // Imported lazily: the SDK touches browser-only APIs at load time.
     const { Device, Call } = await import("@twilio/voice-sdk");
     const device = new Device(token, { codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU], logLevel: "warn" });
-    device.on("tokenWillExpire", async () => device.updateToken((await fetchCustomerVoiceToken()).token));
+    device.on("tokenWillExpire", async () => device.updateToken((await fetchToken()).token));
     device.on("error", (err: { message?: string }) => setError(`Call error: ${err.message ?? String(err)}`));
     deviceRef.current = device;
     return device;
@@ -94,7 +104,9 @@ export function CustomerCallWidget({ careLineNumber }: { careLineNumber: string 
       call.on("error", (err: { message?: string }) => setError(`Call error: ${err.message ?? String(err)}`));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setError(message.startsWith("503") ? "Browser calling isn't set up for this deployment yet. Please try again later." : message);
+      if (message.startsWith("503")) setError("Browser calling isn't set up for this deployment yet. Please try again later.");
+      else if (message.startsWith("429")) setError("Too many call attempts. Please try again in a few minutes.");
+      else setError(message);
       setPhase("idle");
     }
   }
