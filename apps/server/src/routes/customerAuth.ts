@@ -9,6 +9,13 @@ import { PLAN_CATALOG, findPlan, isServiceAvailable, applyPlanChange, type Custo
 import { describeAction, safeJson, recordCustomerEvent, eventsForCustomer, type CallActionRow } from "../lib/actions.js";
 import { OUTCOME_SQL, sqliteUtcToIso } from "../lib/outcome.js";
 import { getSettings } from "../lib/settings.js";
+import { addDays, toIsoDate, todayLocal } from "../lib/dates.js";
+
+// A purchase counts as the plan's first payment, due again in 30 days (every PLAN_CATALOG plan is
+// monthly) - found missing live, Oct 1: a web-purchased customer had last_payment_date and
+// next_billing_due_date both left NULL forever, so PAYMENT_HISTORY/BILLING_DUE_DATE had nothing to
+// answer with no matter when asked.
+const BILLING_CYCLE_DAYS = 30;
 
 export const customerAuthRouter = Router();
 
@@ -118,17 +125,31 @@ customerAuthRouter.post("/purchase-plan", requireCustomerAuth, (req, res) => {
   const ban = nextBan();
   const pin = crypto.randomInt(1000, 10000).toString();
   const pinHash = bcrypt.hashSync(pin, 10);
+  const purchaseDate = toIsoDate(todayLocal());
+  const nextDue = toIsoDate(addDays(todayLocal(), BILLING_CYCLE_DAYS));
 
   // customer_type follows whichever plan was actually bought (found and fixed Sep 30 - this used to
   // be left at the column's RESIDENTIAL default no matter what, so every web-purchased business
   // customer was silently mis-tagged as residential). The phone new-customer flow asks this
   // explicitly; the web flow infers it from the plan itself since residential/business are now
   // separate product lines in PLAN_CATALOG.
+  // last_payment_amount/date and next_billing_due_date are set here too (found missing Oct 1) - the
+  // purchase itself is treated as the plan's first payment, due again one billing cycle from today.
   db.prepare(`
     UPDATE customers
-    SET ban = @ban, pin_hash = @pinHash, plan_name = @planName, account_status = 'ACTIVE', customer_type = @customerType
+    SET ban = @ban, pin_hash = @pinHash, plan_name = @planName, account_status = 'ACTIVE', customer_type = @customerType,
+        last_payment_amount = @amount, last_payment_date = @purchaseDate, next_billing_due_date = @nextDue
     WHERE id = @id
-  `).run({ "@ban": ban, "@pinHash": pinHash, "@planName": plan.name, "@customerType": plan.audience, "@id": customerId });
+  `).run({
+    "@ban": ban,
+    "@pinHash": pinHash,
+    "@planName": plan.name,
+    "@customerType": plan.audience,
+    "@amount": plan.monthlyPrice,
+    "@purchaseDate": purchaseDate,
+    "@nextDue": nextDue,
+    "@id": customerId,
+  });
 
   res.status(201).json({ ban, pin, planName: plan.name });
 });

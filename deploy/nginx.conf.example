@@ -1,0 +1,34 @@
+## Voice Nexus reverse proxy — one public host, two local processes.
+## /api/*  -> the Express server (vn-server, :4000) — includes Twilio webhooks under /api/twilio/*
+## everything else -> the Next.js app (vn-web, :3000)
+##
+## Replace YOUR_HOST below with your VM's address — if you don't own a domain, nip.io gives you a
+## free hostname that resolves to any IP with no signup: VM IP 123.45.67.89 -> 123.45.67.89.nip.io
+## This lets certbot (Let's Encrypt, also free) issue a real HTTPS cert with no domain purchase,
+## which Twilio's webhook signature validation requires (PUBLIC_BASE_URL must be https).
+##
+## Install: sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/voice-nexus
+##          sudo ln -s /etc/nginx/sites-available/voice-nexus /etc/nginx/sites-enabled/
+##          sudo certbot --nginx -d YOUR_HOST   (fills in the TLS block automatically)
+
+server {
+    listen 80;
+    server_name YOUR_HOST;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 30m; # audio uploads (POST /api/calls/:id/audio, 25MB cap server-side)
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -36,6 +36,8 @@ import {
   applyPayment,
   findActiveOutage,
   isServiceAvailable,
+  planRecommendationText,
+  suggestBetterPlan,
   type CustomerRow,
   type PlanInfo,
 } from "./businessLogic.js";
@@ -242,6 +244,15 @@ const FAREWELL_RE = /\b(bye|goodbye|that'?s all|that is all|nothing else|no than
 // fires post-auth, from classify()) so the two never compete for the same utterance.
 const PLANS_OR_SERVICES_RE =
   /\b(what|which) (plans?|packages?|services?)\b|\btell me about (your |the )?(plans?|packages?|services?)\b|\bplans? (do you have|(are )?available|options)\b|\bwhat do you offer\b|\bwhat can you help (me )?with\b/i;
+// A caller wanting a recommendation, not a catalog dump - "which plan should I get", "what's the best
+// plan", "is there a better plan for me", "compare plans" (user request, Oct 1: "it should suggest the
+// best plan... in short... it should not tell everything"). Checked before PLANS_OR_SERVICES_RE, which
+// would also match most of these phrasings but answers with the full price-range summary instead of a
+// short recommendation. "plan"/"better" are matched in either order and a few words apart ("plan which
+// would be better", "a better plan") - real phrasing found live, Oct 1, that a stricter word-order-only
+// pattern missed entirely.
+const PLAN_RECOMMEND_RE =
+  /\bplan\b[^.?!]{0,25}\bbetter\b|\bbetter\b[^.?!]{0,25}\bplan\b|\bwhich plan (should|would|is)\b|\bwhat'?s the best plan\b|\bbest plan for me\b|\brecommend (a |the )?plan\b|\bcompare (the |your )?plans?\b|\bshould i (upgrade|switch|change)( my plan)?\b/i;
 
 export async function advanceAuthSession(conversationId: string, utterance: string): Promise<TurnResult> {
   const settings = getSettings();
@@ -276,6 +287,17 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
     }
     noteIntent(ctx.conversationId, "AGENT_REQUEST");
     return agentRequested(ctx);
+  }
+
+  // A not-yet-verified caller wanting a recommendation, not the full catalog - see PLAN_RECOMMEND_RE
+  // above. Checked before PLANS_OR_SERVICES_RE since it would also match most of these phrasings.
+  // Uses the audience from the current subflow if one's already been established (new-customer ZIP/
+  // offer); defaults to residential otherwise, same default extractPlan/plansAndServicesText use.
+  if (session.stage !== "AUTHENTICATED" && PLAN_RECOMMEND_RE.test(utterance)) {
+    const accountType = (subflow && "accountType" in subflow && subflow.accountType) || "RESIDENTIAL";
+    const resume = pendingPrompt(subflow, session.stage);
+    const rec = planRecommendationText(accountType);
+    return reply(ctx, resume ? `${rec} ${resume}` : `${rec} Would you like to sign up for one of these?`);
   }
 
   // Public catalog question, answerable with no account access - see PLANS_OR_SERVICES_RE above.
@@ -518,6 +540,21 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
     }
 
     case "PLAN_CHANGE": {
+      // "Which plan is best for me" - for a caller who already has a plan, that means personalized
+      // against what they're currently on (suggestBetterPlan: "stay" or "switch to X, here's why"),
+      // not the generic most-popular/best-value pitch a not-yet-a-customer gets (user request, Oct 1).
+      // Checked before trying to extract a specific plan name, since asking this hasn't named one yet.
+      if (PLAN_RECOMMEND_RE.test(utterance)) {
+        const suggestion = suggestBetterPlan(customer);
+        if (suggestion.suggestedPlan) {
+          // Goes straight into the same CONFIRM step confirmPlan() uses below, reusing its existing
+          // yes/no handling rather than a new one - the suggestion text already ends in "Would you
+          // like to switch?", so the caller's very next "yes" commits exactly this plan.
+          setSubflow(ctx.conversationId, { type: "PLAN_CHANGE", step: "CONFIRM", plan: suggestion.suggestedPlan });
+          return reply(ctx, suggestion.text);
+        }
+        return reply(ctx, `${suggestion.text} ${ANYTHING_ELSE}`);
+      }
       const plan = utterance ? await extractPlan(utterance, customer.customer_type) : null;
       if (plan && plan.name !== customer.plan_name) return confirmPlan(ctx, customer, plan.name);
       setSubflow(ctx.conversationId, { type: "PLAN_CHANGE", step: "CHOOSE" });
@@ -874,6 +911,14 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
     case "PLAN_CHANGE": {
       const customer = requireCustomer(ctx.session);
       if (sf.step === "CHOOSE") {
+        // Asked for a recommendation instead of naming a plan, mid-flow - same personalized check as
+        // the entry point above, so asking "which is best" after seeing the full list still works.
+        if (PLAN_RECOMMEND_RE.test(u)) {
+          const suggestion = suggestBetterPlan(customer);
+          if (suggestion.suggestedPlan) return confirmPlan(ctx, customer, suggestion.suggestedPlan);
+          setSubflow(ctx.conversationId, null);
+          return reply(ctx, `${suggestion.text} ${ANYTHING_ELSE}`);
+        }
         // A plan name wins over any "no"/"don't" in the sentence ("the fastest one, but I don't need TV").
         const plan = await extractPlan(u, customer.customer_type);
         if (!plan) {

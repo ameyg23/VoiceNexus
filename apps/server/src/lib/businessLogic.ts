@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { db } from "@voice-nexus/db";
 import type { CustomerType, Intent, MfaMethod } from "@voice-nexus/shared";
-import { speakDate } from "./dates.js";
+import { speakDate, speakRelativeDate } from "./dates.js";
 
 export interface CustomerRow {
   id: string;
@@ -78,32 +78,63 @@ export function getIntentResponseData(customer: CustomerRow, intent: InfoIntent)
       };
 
     case "PAYMENT_HISTORY":
+      // When there's no payment yet, data is deliberately null rather than { lastPaymentAmount: 0,
+      // lastPaymentDate: null } - a real bug, found live Oct 1: with both fields present but null/0,
+      // phraseResponseAI's instruction didn't say what to do about the missing date, so it quietly
+      // answered with whatever *other* field it could find on the customer (balance) instead of
+      // addressing the question at all - from the caller's side, indistinguishable from the assistant
+      // ignoring them. Giving it nothing to work with but an explicit "say there's no history yet"
+      // instruction removes that failure mode entirely, same pattern TECH_TRIAGE already uses.
+      if (!customer.last_payment_date) {
+        return {
+          instruction: "The caller has no payment history yet. Tell them plainly that you don't see any payments on their account yet.",
+          data: null,
+          fallbackText: "I don't see any payments on your account yet.",
+        };
+      }
+      // "today"/"yesterday" close to the payment date, the actual date otherwise - computed server-side
+      // (speakRelativeDate) and handed to the AI as the literal words to use, not a date for it to do
+      // relative math on itself (user request, Oct 1: "if I create an account today and ask my last
+      // payment date it should say today... tomorrow it should say yesterday... after 15 days the date").
+      const paidWhen = speakRelativeDate(customer.last_payment_date);
       return {
-        instruction: "Tell the caller the amount and date of their last payment.",
-        data: { lastPaymentAmount: customer.last_payment_amount, lastPaymentDate: customer.last_payment_date },
-        fallbackText: customer.last_payment_date
-          ? `Your last payment was $${customer.last_payment_amount.toFixed(2)} on ${speakDate(customer.last_payment_date)}.`
-          : "I don't see any payments on your account yet.",
+        instruction: `Tell the caller the amount of their last payment and when it was made. Use exactly this wording for when it was made: "${paidWhen}" - don't convert it to a calendar date yourself.`,
+        data: { lastPaymentAmount: customer.last_payment_amount, lastPaymentWhen: paidWhen },
+        fallbackText: `Your last payment was $${customer.last_payment_amount.toFixed(2)}, made ${paidWhen}.`,
       };
 
     case "BILLING_DUE_DATE":
-      return {
-        instruction: "Tell the caller when their next bill is due, and their current balance.",
-        data: { nextBillingDueDate: customer.next_billing_due_date, currentBalance: customer.current_balance },
-        fallbackText: customer.next_billing_due_date
-          ? `Your next bill of $${customer.current_balance.toFixed(2)} is due on ${speakDate(customer.next_billing_due_date)}.`
-          : "You don't have a bill scheduled yet.",
-      };
+      // Same fix as PAYMENT_HISTORY above, and the same real bug it was found alongside: with no due
+      // date on file, don't hand the AI a currentBalance figure to fall back on answering instead.
+      return customer.next_billing_due_date
+        ? {
+            instruction: "Tell the caller when their next bill is due, and their current balance.",
+            data: { nextBillingDueDate: customer.next_billing_due_date, currentBalance: customer.current_balance },
+            fallbackText: `Your next bill of $${customer.current_balance.toFixed(2)} is due on ${speakDate(customer.next_billing_due_date)}.`,
+          }
+        : {
+            instruction: "The caller has no bill scheduled yet. Tell them plainly that there's no bill due yet.",
+            data: null,
+            fallbackText: "You don't have a bill scheduled yet.",
+          };
 
-    case "PLAN_INFO":
+    case "PLAN_INFO": {
+      // Full picture, not just the plan's name (user request, Oct 1: "it should tell everything about
+      // the plan like the plan name, the price, benefits, the services... etc") - monthlyPrice and
+      // description come from the same PLAN_CATALOG the phone PLAN_CHANGE subflow and the portal's
+      // plan picker already use, so this can never drift out of sync with what the plan actually costs
+      // or includes.
+      const plan = findPlan(customer.plan_name);
+      const planLine = plan
+        ? `You're on the ${customer.plan_name} plan: ${plan.description}, for $${plan.monthlyPrice.toFixed(2)} a month.`
+        : `You're on the ${customer.plan_name} plan.`;
       return {
-        instruction: "Tell the caller their plan name, and their discount percent if it's non-zero.",
-        data: { planName: customer.plan_name, discountPercent: customer.discount_percent },
+        instruction: "Tell the caller their plan name, what it includes, and its monthly price, and their discount percent if it's non-zero.",
+        data: { planName: customer.plan_name, monthlyPrice: plan?.monthlyPrice, whatsIncluded: plan?.description, discountPercent: customer.discount_percent },
         fallbackText:
-          customer.discount_percent > 0
-            ? `You're on the ${customer.plan_name} plan with a ${customer.discount_percent}% discount applied.`
-            : `You're on the ${customer.plan_name} plan.`,
+          customer.discount_percent > 0 ? `${planLine} You also have a ${customer.discount_percent}% discount applied.` : planLine,
       };
+    }
 
     case "AUTOPAY_STATUS":
       return {
@@ -149,6 +180,66 @@ export const PLAN_CATALOG: PlanInfo[] = [
   { name: "Business 500", monthlyPrice: 119, description: "500 Mbps fiber internet, static IP, priority support", audience: "BUSINESS" },
   { name: "Business 1000", monthlyPrice: 179, description: "1 gig fiber internet, static IP, priority support, 24/7 priority line", audience: "BUSINESS" },
 ];
+
+// Same two picks the web portal badges as "Most Popular"/"Best Value" (apps/web/lib/marketingContent.ts's
+// PLAN_BADGES) - kept in sync by hand since phone and web are separate codebases, but deliberately the
+// same two plans so a caller never hears a different recommendation than what the website shows.
+export const PLAN_HIGHLIGHTS: Record<string, "Most Popular" | "Best Value"> = {
+  "Fiber 500": "Most Popular",
+  "Fiber 1000": "Best Value",
+  "Business 500": "Most Popular",
+  "Business 1000": "Best Value",
+};
+
+// A brief, spoken recommendation - just the catalog's two highlighted plans, never the full list (user
+// request, Oct 1: "it should not tell everything... only say this is the most popular plan, this is
+// the best value plan... in brief"). Used both for an existing caller asking "which plan is best for
+// me" and a not-yet-a-customer asking "which plan should I buy."
+export function planRecommendationText(audience: CustomerType): string {
+  const plans = PLAN_CATALOG.filter((p) => p.audience === audience);
+  const headline = (p: PlanInfo) => p.description.split(",")[0];
+  const popular = plans.find((p) => PLAN_HIGHLIGHTS[p.name] === "Most Popular");
+  const bestValue = plans.find((p) => PLAN_HIGHLIGHTS[p.name] === "Best Value");
+  const parts: string[] = [];
+  if (popular) parts.push(`Our most popular plan is ${popular.name}, ${headline(popular)}, for $${popular.monthlyPrice} a month.`);
+  if (bestValue) parts.push(`For the best value, there's ${bestValue.name}, ${headline(bestValue)}, for $${bestValue.monthlyPrice} a month.`);
+  if (parts.length) return parts.join(" ");
+  // Fallback if an audience's catalog ever has no highlighted plans - still brief, not the full list.
+  return `Our plans for ${audience === "BUSINESS" ? "business" : "home"} start at $${Math.min(...plans.map((p) => p.monthlyPrice))} a month.`;
+}
+
+export interface PlanSuggestion {
+  text: string;
+  // The plan to switch to, so the caller can go straight into the existing yes/no confirm step - or
+  // null when the answer is "stay," which needs no confirmation of anything.
+  suggestedPlan: string | null;
+}
+
+// Personalized version of the above for a caller who already has a plan (user request, Oct 1: "it
+// should consider my plan and compare other plans... if my plan is not better, tell me this plan is
+// better, you can switch... if my plan is better, tell me your plan is better, you should stay").
+// "Better" is deliberately simple, not a multi-attribute comparison: the catalog's own "Best Value"
+// pick for their audience is the one upsell target. If they're already on it, or on something that
+// costs as much or more (the two "+TV" bundles, which genuinely cost more), there's nothing to upsell
+// to, so the honest answer is "stay." Otherwise that one plan is the suggestion, with a one-line reason
+// and the exact price difference, not a generic pitch.
+export function suggestBetterPlan(customer: CustomerRow): PlanSuggestion {
+  const current = findPlan(customer.plan_name);
+  if (!current) return { text: "I don't see a plan on your account to compare.", suggestedPlan: null };
+  const bestValue = PLAN_CATALOG.find((p) => p.audience === customer.customer_type && PLAN_HIGHLIGHTS[p.name] === "Best Value");
+  const headline = (p: PlanInfo) => p.description.split(",")[0];
+  if (!bestValue || current.name === bestValue.name || current.monthlyPrice >= bestValue.monthlyPrice) {
+    return {
+      text: `You're on ${current.name}, ${headline(current)}, for $${current.monthlyPrice} a month - that's already one of our best plans, so I'd say stick with what you have.`,
+      suggestedPlan: null,
+    };
+  }
+  const extra = bestValue.monthlyPrice - current.monthlyPrice;
+  return {
+    text: `You're currently on ${current.name}, ${headline(current)}, for $${current.monthlyPrice} a month. I'd recommend ${bestValue.name} instead - ${headline(bestValue)} - for just $${extra} more a month. Would you like to switch?`,
+    suggestedPlan: bestValue.name,
+  };
+}
 
 export function findPlan(name: string): PlanInfo | undefined {
   return PLAN_CATALOG.find((p) => p.name.toLowerCase() === name.toLowerCase());

@@ -15,17 +15,25 @@ import { INTENT_LABELS } from "../../../lib/format";
 // intents are deliberately kept out of the ops UI).
 
 const ROUTABLE_INTENTS = ALL_INTENTS.filter((i) => i !== "UNKNOWN");
+// Upgraded from Amazon Polly's Standard tier to Neural/Generative (Oct 1, user: "the voice of the AI
+// agent... very human... can we make something like this free of cost?") - Twilio speaks these through
+// the exact same <Say voice="..."> mechanism already in use, no new integration, just a materially
+// better voice model. Costs a small amount more per character than Standard (still drawn from the same
+// Twilio trial credit, not a new expense), confirmed against Twilio's own supported-voice list rather
+// than guessed - an unsupported name here would silently break every phone call's TTS. Miguel (es-US)
+// and Aditi (hi-IN) have no Neural/Generative tier at all, so swapped for the closest same-gender voice
+// that does (Pedro, Kajal) rather than leaving one language's list stuck on the old quality tier.
 const PHONE_VOICES: Record<TenantSettings["language"], { value: string; label: string }[]> = {
   "en-US": [
-    { value: "Polly.Joanna", label: "Joanna (US English, female)" },
-    { value: "Polly.Matthew", label: "Matthew (US English, male)" },
-    { value: "Polly.Salli", label: "Salli (US English, female)" },
+    { value: "Polly.Joanna-Generative", label: "Joanna (US English, female, Generative)" },
+    { value: "Polly.Matthew-Generative", label: "Matthew (US English, male, Generative)" },
+    { value: "Polly.Salli-Neural", label: "Salli (US English, female, Neural)" },
   ],
   "es-US": [
-    { value: "Polly.Lupe", label: "Lupe (US Spanish, female)" },
-    { value: "Polly.Miguel", label: "Miguel (US Spanish, male)" },
+    { value: "Polly.Lupe-Generative", label: "Lupe (US Spanish, female, Generative)" },
+    { value: "Polly.Pedro-Generative", label: "Pedro (US Spanish, male, Generative)" },
   ],
-  "hi-IN": [{ value: "Polly.Aditi", label: "Aditi (Hindi / Indian English, female)" }],
+  "hi-IN": [{ value: "Polly.Kajal-Generative", label: "Kajal (Hindi / Indian English, female, Generative)" }],
 };
 
 type Form = Omit<TenantSettings, "intentOverrides">;

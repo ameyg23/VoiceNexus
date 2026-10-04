@@ -238,8 +238,11 @@ export interface VoiceStyle {
 }
 
 export async function phraseResponseAI(instruction: string, data: unknown, style?: VoiceStyle): Promise<string | null> {
+  // Phrased so it reads correctly whatever assistantName holds - a proper name like the old "Ava," or
+  // a role like "AI assistant" ("You are AI assistant, the phone assistant..." reads oddly missing an
+  // article; "Your name is X" doesn't have that problem either way).
   const voice = style
-    ? `You are ${style.assistantName}, the phone assistant for ${style.brandName}. Brand voice: ${style.tone}. Reply in ${style.languageName}. `
+    ? `Your name is ${style.assistantName}, the phone assistant for ${style.brandName}. Brand voice: ${style.tone}. Reply in ${style.languageName}. `
     : "";
   const result = await callGemini(
     voice +

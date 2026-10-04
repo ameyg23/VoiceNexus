@@ -108,7 +108,7 @@ async function scenarios() {
   console.log("\n1. Greeting, disclosures, pronunciation");
   {
     const call = await Call.start();
-    expectText(call.last, /virtual assistant/i, "greeting discloses the AI (compliance)");
+    expectText(call.last, /AI assistant/i, "greeting discloses the AI (compliance)");
     check("recording disclosure NOT spoken by default (Sep 29 — user: 'no need of this')", !/recorded/i.test(call.last.aiText), call.last.aiText);
     await call.say("what's my balance");
     await call.say("existing customer");
@@ -354,7 +354,7 @@ async function scenarios() {
     setSetting("intentOverrides", { PLAN_CHANGE: { enabled: false, examples: [] } });
     setSetting("greetingPrompt", "Hello from {brand}! {disclosures} How may I help?");
     const call = await Call.start();
-    expectText(call.last, /^Hello from Springfield Fiber!.*virtual assistant.*How may I help\?$/, "custom greeting with disclosures filled in");
+    expectText(call.last, /^Hello from Springfield Fiber!.*AI assistant.*How may I help\?$/, "custom greeting with disclosures filled in");
     await call.say("what's my balance");
     await verifyPin(call, "100003", "5560");
     const t = await call.say("I want to upgrade my plan");

@@ -45,6 +45,17 @@ export function speakDate(iso: string): string {
   return fromIsoDate(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
+// "today" / "yesterday" close to the date in question, the full calendar date otherwise (user request,
+// Oct 1: a payment made today should be read back as "today," made yesterday as "yesterday," anything
+// further back as the actual date). The server computes this, not the AI - same "never let the AI do
+// date math itself" rule every other date-handling path in this file already follows.
+export function speakRelativeDate(iso: string): string {
+  const diff = daysBetween(fromIsoDate(iso), todayLocal());
+  if (diff === 0) return "today";
+  if (diff === 1) return "yesterday";
+  return speakDate(iso);
+}
+
 // Returns an ISO date (YYYY-MM-DD) or null. Relative forms resolve against `today`; a bare day of the
 // month ("the 30th") means the next occurrence.
 export function parseSpokenDate(text: string, today: Date = todayLocal()): string | null {

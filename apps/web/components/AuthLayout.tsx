@@ -7,12 +7,29 @@ import { fetchSession } from "../lib/api";
 import { LogoMark, CheckIcon } from "./icons";
 
 // Split-screen layout shared by /login and /signup: brand panel on the left (hidden on small
-// screens), form on the right. Visitors who are already signed in are sent straight home.
-export function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: React.ReactNode; children: React.ReactNode }) {
+// screens), form on the right. Visitors who are already signed in are sent straight home - except on
+// /signup (skipSessionRedirect), where that was a real bug (Oct 1, found during a live demo): a
+// browser with a leftover session from testing (e.g. Amara's account, logged in earlier) silently
+// bounced a brand-new "pick a plan and sign up" visitor straight to that stranger's account page,
+// with no form and no explanation, instead of letting them create the new account they came for.
+// Submitting /signup's form always replaces whatever session cookie was there with the new
+// customer's own, so there's no reason to gate the form behind "not already signed in" at all.
+export function AuthLayout({
+  title,
+  subtitle,
+  children,
+  skipSessionRedirect,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  children: React.ReactNode;
+  skipSessionRedirect?: boolean;
+}) {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(!skipSessionRedirect);
 
   useEffect(() => {
+    if (skipSessionRedirect) return;
     let cancelled = false;
     fetchSession()
       .then((s) => {
@@ -24,7 +41,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, skipSessionRedirect]);
 
   return (
     <div className="flex min-h-screen bg-white">

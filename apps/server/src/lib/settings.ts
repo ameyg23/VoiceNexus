@@ -60,10 +60,14 @@ export type TenantSettings = z.infer<typeof settingsSchema>;
 
 export const DEFAULT_SETTINGS: TenantSettings = {
   brandName: "Springfield Fiber",
-  assistantName: "AI agent",
+  // "AI assistant," not "AI agent" (Oct 1, user: "Hello I'm Springfield Fiber's AI assistant... it
+  // should be AI assistant and not AI agent").
+  assistantName: "AI assistant",
   voiceTone: "warm, friendly, professional and concise",
   language: "en-US",
-  phoneVoice: "Polly.Joanna",
+  // Generative tier, not Standard (Oct 1, "make the voice sound more human") - same Polly.<Name>
+  // mechanism Twilio's <Say> already uses, just the newest, most natural-sounding engine tier.
+  phoneVoice: "Polly.Joanna-Generative",
   pronunciations: [
     { from: "BAN", to: "B-A-N" },
     { from: "OTP", to: "O-T-P" },
@@ -73,7 +77,11 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   holdPrompt: "One moment while I look that up.",
   closePrompt: "Thanks for calling {brand}. Have a great day!",
   aiDisclosureEnabled: true,
-  aiDisclosureText: "I'm {assistant}, {brand}'s automated virtual assistant.",
+  // "I'm {brand}'s {assistant}." reads as "I'm Springfield Fiber's AI assistant" - matches the user's
+  // own example exactly. The old template ("I'm {assistant}, {brand}'s automated virtual assistant.")
+  // said "assistant" twice in one sentence now that assistantName itself is "AI assistant," not a name
+  // like the old "Ava."
+  aiDisclosureText: "I'm {brand}'s {assistant}.",
   recordingEnabled: true,
   recordingDisclosureEnabled: false,
   recordingDisclosureText: "This call may be recorded for quality and training.",
