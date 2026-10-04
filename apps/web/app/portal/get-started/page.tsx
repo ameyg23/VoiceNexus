@@ -291,15 +291,15 @@ export default function GetStartedPage() {
                 <input
                   value={zipInput}
                   onChange={(e) => {
-                    setZipInput(e.target.value.replace(/\D/g, "").slice(0, 5));
+                    setZipInput(e.target.value.replace(/\D/g, "").slice(0, 6));
                     setZipResult(null);
                   }}
-                  placeholder="Enter your ZIP code"
+                  placeholder="Enter your six-digit ZIP code"
                   inputMode="numeric"
                   aria-label="ZIP code"
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:max-w-xs"
                 />
-                <button type="submit" disabled={zipInput.length !== 5 || checkingZip} className="btn btn-primary px-6 py-2.5 text-sm disabled:opacity-50">
+                <button type="submit" disabled={zipInput.length !== 6 || checkingZip} className="btn btn-primary px-6 py-2.5 text-sm disabled:opacity-50">
                   {checkingZip ? "Checking…" : "Check availability"}
                 </button>
               </form>
@@ -326,15 +326,20 @@ export default function GetStartedPage() {
             <section id="support" className="mt-12 scroll-mt-6">
               <span className="kicker">Prefer to talk it through?</span>
               <h2 className="mt-2 text-lg font-bold text-gray-900">Call customer support</h2>
-              <div className="mt-4 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8">
-                <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/80">
-                  <PhoneIcon className="h-4 w-4" /> Call customer care
-                </p>
+              {/* Two columns on larger screens - text on the left, the compact call widget on the right -
+                  so the card's width is actually used instead of leaving dead space around a narrow dial
+                  pad (user feedback, Oct 4). */}
+              <div className="mt-4 grid gap-6 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8 md:grid-cols-2 md:items-center">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/80">
+                    <PhoneIcon className="h-4 w-4" /> Call customer care
+                  </p>
+                  <p className="mt-3 max-w-lg text-sm text-white/85">
+                    <HeadsetIcon className="mr-1 inline h-4 w-4 align-text-bottom" />
+                    Our assistant can check service availability in your area and get you signed up right over the phone, no plan choice needed here.
+                  </p>
+                </div>
                 <CustomerCallWidget careLineNumber={activity?.careLineNumber ?? null} />
-                <p className="mt-3 max-w-lg text-sm text-white/85">
-                  <HeadsetIcon className="mr-1 inline h-4 w-4 align-text-bottom" />
-                  Our assistant can check service availability in your area and get you signed up right over the phone, no plan choice needed here.
-                </p>
               </div>
             </section>
           </main>

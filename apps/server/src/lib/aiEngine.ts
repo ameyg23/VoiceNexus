@@ -204,6 +204,29 @@ export async function classifyForgotCredentialsAI(utterance: string): Promise<bo
   return typeof result?.cantProvideIt === "boolean" ? result.cantProvideIt : null;
 }
 
+// Whether a caller is asking about the plan catalog in general ("tell me the residential plans you
+// have") or asking for a recommendation specifically ("what's the best plan to buy") - judged by meaning,
+// not fixed phrasing, since real speech varies a lot more than the regex this backs up can match (found
+// live, Oct 4: "tell me uh, the residential plans that you have" and "what is the best residential plan
+// to buy" both say exactly this, but neither matches PLANS_OR_SERVICES_RE/PLAN_RECOMMEND_RE's narrower
+// wording). Only called when a cheap keyword pre-filter already found "plan"/"package"/"service"
+// somewhere in the utterance, so this never runs on a turn that's obviously unrelated (digit entry,
+// yes/no, etc.) - same cost-bounding idea as classifyForgotCredentialsAI.
+export async function classifyPlanQuestionAI(utterance: string): Promise<"CATALOG" | "RECOMMEND" | "NEITHER" | null> {
+  const result = await callGemini(
+    `A phone caller mentioned plans, packages, or services. Decide what they're asking for: CATALOG (a ` +
+      `general question about what plans/services/packages exist, e.g. "tell me your residential plans", ` +
+      `"what packages do you offer"), RECOMMEND (asking which one is best, most popular, or best value for ` +
+      `them specifically, e.g. "what's the best plan to buy", "which one should I get"), or NEITHER (plans ` +
+      `came up some other way, e.g. naming a specific plan they already want, or an unrelated account ` +
+      `question). Judge the meaning, not specific words - callers phrase both of the first two many ` +
+      `different ways, often with filler words or extra adjectives in between.`,
+    `Caller said: ${utterance}`,
+    { type: "object", properties: { kind: { type: "string", enum: ["CATALOG", "RECOMMEND", "NEITHER"] } }, required: ["kind"] }
+  );
+  return (result?.kind as "CATALOG" | "RECOMMEND" | "NEITHER" | undefined) ?? null;
+}
+
 export async function extractDateAI(utterance: string, todayIso: string): Promise<string | null> {
   const result = await callGemini(
     `Today is ${todayIso}. Extract the calendar date the caller means from their spoken reply, resolving ` +

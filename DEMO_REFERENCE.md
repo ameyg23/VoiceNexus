@@ -53,15 +53,16 @@ purchased, or it can be ignored as leftover test data.
 
 Used by the phone flow's new-customer sign-up check and the web availability checker (`/`,
 `/portal/get-started`). A ZIP not in this table reads as **not covered**, for either audience.
+6-digit codes (Oct 4 — was 5-digit, migration `011_six_digit_zips.sql`).
 
 | ZIP | Residential | Business |
 |---|---|---|
-| 62701 | ✅ | ✅ |
-| 62702 | ✅ | ✅ |
-| 62703 | ✅ | ❌ |
-| 62704 | ✅ | ✅ |
-| 62705 | ❌ | ✅ |
-| 62706 | ❌ | ❌ |
+| 627010 | ✅ | ✅ |
+| 627020 | ✅ | ✅ |
+| 627030 | ✅ | ❌ |
+| 627040 | ✅ | ✅ |
+| 627050 | ❌ | ✅ |
+| 627060 | ❌ | ❌ |
 
 ## Intents and routing codes
 

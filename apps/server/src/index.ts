@@ -80,7 +80,7 @@ app.get("/api/demo/plans", (_req, res) => {
 app.get("/api/demo/service-availability", (req, res) => {
   const zip = String(req.query.zip ?? "").trim();
   const accountType = req.query.accountType === "BUSINESS" ? "BUSINESS" : "RESIDENTIAL";
-  if (!/^\d{5}$/.test(zip)) return res.status(400).json({ error: "enter a 5-digit ZIP code" });
+  if (!/^\d{6}$/.test(zip)) return res.status(400).json({ error: "enter a 6-digit ZIP code" });
   res.json({ zip, accountType, available: isServiceAvailable(zip, accountType) });
 });
 

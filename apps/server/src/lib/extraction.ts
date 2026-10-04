@@ -11,6 +11,7 @@ import {
   classifyIntentAI,
   classifyYesNoAI,
   classifyForgotCredentialsAI,
+  classifyPlanQuestionAI,
   extractDateAI,
   extractPlanAI,
 } from "./aiEngine.js";
@@ -39,10 +40,12 @@ export async function extractPin(text: string): Promise<Extracted | null> {
   return ai ? { value: ai, confident: false } : null;
 }
 
-// 5-digit ZIP — plain digits or a keypad entry are unambiguous enough that no AI fallback is needed.
+// 6-digit ZIP/PIN code (user request, Oct 4 — matches the 6-digit postal code format the caller
+// actually expects, not the US 5-digit ZIP this was originally written against) — plain digits or a
+// keypad entry are unambiguous enough that no AI fallback is needed.
 export function extractZip(raw: string): string | null {
   const text = joinSpokenDigits(raw);
-  const match = text.match(/\b(\d{5})\b/);
+  const match = text.match(/\b(\d{6})\b/);
   return match ? match[1] : null;
 }
 
@@ -84,6 +87,20 @@ const FORGOT_CREDENTIALS_RE =
 export async function isForgotCredentials(text: string): Promise<boolean> {
   if (FORGOT_CREDENTIALS_RE.test(text)) return true;
   return (await classifyForgotCredentialsAI(text)) === true;
+}
+
+// AI fallback for the regex-based PLANS_OR_SERVICES_RE/PLAN_RECOMMEND_RE checks in authStateMachine.ts -
+// real speech varies more than either regex can match (found live, Oct 4: "tell me uh, the residential
+// plans that you have" and "what is the best residential plan to buy" both failed, since the regexes need
+// "plans" or "plan" immediately adjacent to specific words, with no filler or adjective in between). Gated
+// behind a cheap keyword pre-filter so this never adds a round-trip to a turn that obviously isn't about
+// plans at all (digit entry, yes/no, etc.) - same cost-bounding idea as isForgotCredentials above.
+const MENTIONS_PLAN_RE = /\b(plans?|packages?|services?)\b/i;
+
+export async function classifyPlanQuestion(text: string): Promise<"CATALOG" | "RECOMMEND" | null> {
+  if (!MENTIONS_PLAN_RE.test(text)) return null;
+  const kind = await classifyPlanQuestionAI(text);
+  return kind === "CATALOG" || kind === "RECOMMEND" ? kind : null;
 }
 
 export async function extractOtp(text: string): Promise<string | null> {

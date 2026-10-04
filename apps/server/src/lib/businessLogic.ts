@@ -191,21 +191,44 @@ export const PLAN_HIGHLIGHTS: Record<string, "Most Popular" | "Best Value"> = {
   "Business 1000": "Best Value",
 };
 
+export interface PlanRecommendation {
+  text: string;
+  // The one plan actually highlighted, when the caller's question picked out a specific aspect ("the
+  // most popular plan", "the best value plan", a bare "the best plan") - so the caller can be asked
+  // about signing up for that one plan by name. Null when both plans got mentioned (a generic "recommend
+  // something"/"which plan should I buy" ask with no further qualifier), since there's no single plan to
+  // point the question at there (user request, Oct 4 - the sign-up follow-up should name the plan when
+  // one specific plan was actually asked about, and stay generic ("one of these") only when it wasn't).
+  singlePlan: string | null;
+}
+
 // A brief, spoken recommendation - just the catalog's two highlighted plans, never the full list (user
 // request, Oct 1: "it should not tell everything... only say this is the most popular plan, this is
 // the best value plan... in brief"). Used both for an existing caller asking "which plan is best for
 // me" and a not-yet-a-customer asking "which plan should I buy."
-export function planRecommendationText(audience: CustomerType): string {
+export function planRecommendationText(audience: CustomerType, utterance?: string): PlanRecommendation {
   const plans = PLAN_CATALOG.filter((p) => p.audience === audience);
   const headline = (p: PlanInfo) => p.description.split(",")[0];
   const popular = plans.find((p) => PLAN_HIGHLIGHTS[p.name] === "Most Popular");
   const bestValue = plans.find((p) => PLAN_HIGHLIGHTS[p.name] === "Best Value");
-  const parts: string[] = [];
-  if (popular) parts.push(`Our most popular plan is ${popular.name}, ${headline(popular)}, for $${popular.monthlyPrice} a month.`);
-  if (bestValue) parts.push(`For the best value, there's ${bestValue.name}, ${headline(bestValue)}, for $${bestValue.monthlyPrice} a month.`);
-  if (parts.length) return parts.join(" ");
+  const popularLine = popular && `Our most popular plan is ${popular.name}, ${headline(popular)}, for $${popular.monthlyPrice} a month.`;
+  const bestValueLine = bestValue && `For the best value, there's ${bestValue.name}, ${headline(bestValue)}, for $${bestValue.monthlyPrice} a month.`;
+
+  // "Popular"/"value" each point at one specific plan; a bare "best" with neither qualifier reads as the
+  // closest single-plan ask ("what's the best plan" - treated the same as "best value") rather than the
+  // combined pitch, which is reserved for a genuinely open-ended "recommend a plan"/"which should I buy."
+  const asksPopular = utterance ? /\bpopular\b/i.test(utterance) : false;
+  const asksValue = utterance ? /\b(value|best)\b/i.test(utterance) : false;
+  if (asksPopular && !asksValue && popularLine) return { text: popularLine, singlePlan: popular!.name };
+  if (asksValue && !asksPopular && bestValueLine) return { text: bestValueLine, singlePlan: bestValue!.name };
+
+  const parts = [popularLine, bestValueLine].filter((p): p is string => Boolean(p));
+  if (parts.length) return { text: parts.join(" "), singlePlan: null };
   // Fallback if an audience's catalog ever has no highlighted plans - still brief, not the full list.
-  return `Our plans for ${audience === "BUSINESS" ? "business" : "home"} start at $${Math.min(...plans.map((p) => p.monthlyPrice))} a month.`;
+  return {
+    text: `Our plans for ${audience === "BUSINESS" ? "business" : "home"} start at $${Math.min(...plans.map((p) => p.monthlyPrice))} a month.`,
+    singlePlan: null,
+  };
 }
 
 export interface PlanSuggestion {

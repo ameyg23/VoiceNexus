@@ -24,6 +24,7 @@ import {
   extractPlan,
   extractRating,
   isForgotCredentials,
+  classifyPlanQuestion,
 } from "./extraction.js";
 import {
   findCustomerByBan,
@@ -85,7 +86,12 @@ type Subflow =
   | { type: "CALLBACK"; step: "WINDOW"; date: string }
   | { type: "CALLBACK"; step: "CONFIRM"; date: string; window: TimeWindow }
   | { type: "ESCALATION_OFFER" }
-  | { type: "CSAT" };
+  | { type: "CSAT" }
+  // A new caller who declined to give a ZIP and has nothing else pending - distinct from a bare null
+  // subflow at AWAITING_BAN, which (for an existing customer) means "resume asking for the account
+  // number." Without this, the shared AWAITING_BAN fallback would wrongly ask a brand-new caller for an
+  // account number they were never asked to have (user feedback, Oct 4).
+  | { type: "NEW_CUSTOMER_DONE" };
 
 interface AuthSessionRow {
   conversation_id: string;
@@ -251,8 +257,11 @@ const PLANS_OR_SERVICES_RE =
 // short recommendation. "plan"/"better" are matched in either order and a few words apart ("plan which
 // would be better", "a better plan") - real phrasing found live, Oct 1, that a stricter word-order-only
 // pattern missed entirely.
+// "most popular"/"best value" added Oct 4 - direct phrasings of the catalog's own two highlighted picks
+// (PLAN_HIGHLIGHTS), which previously only matched the broader "which plan is/should" wording and missed
+// "what's the best value plan" entirely (no "which plan" and "best" isn't immediately before "plan").
 const PLAN_RECOMMEND_RE =
-  /\bplan\b[^.?!]{0,25}\bbetter\b|\bbetter\b[^.?!]{0,25}\bplan\b|\bwhich plan (should|would|is)\b|\bwhat'?s the best plan\b|\bbest plan for me\b|\brecommend (a |the )?plan\b|\bcompare (the |your )?plans?\b|\bshould i (upgrade|switch|change)( my plan)?\b/i;
+  /\bplan\b[^.?!]{0,25}\bbetter\b|\bbetter\b[^.?!]{0,25}\bplan\b|\bwhich plan (should|would|is)\b|\bwhat'?s the best plan\b|\bbest plan for me\b|\brecommend (a |the )?plan\b|\bcompare (the |your )?plans?\b|\bshould i (upgrade|switch|change)( my plan)?\b|\bmost popular\b|\bbest value\b/i;
 
 export async function advanceAuthSession(conversationId: string, utterance: string): Promise<TurnResult> {
   const settings = getSettings();
@@ -289,23 +298,34 @@ async function advance(ctx: Ctx): Promise<TurnResult> {
     return agentRequested(ctx);
   }
 
-  // A not-yet-verified caller wanting a recommendation, not the full catalog - see PLAN_RECOMMEND_RE
-  // above. Checked before PLANS_OR_SERVICES_RE since it would also match most of these phrasings.
-  // Uses the audience from the current subflow if one's already been established (new-customer ZIP/
-  // offer); defaults to residential otherwise, same default extractPlan/plansAndServicesText use.
-  if (session.stage !== "AUTHENTICATED" && PLAN_RECOMMEND_RE.test(utterance)) {
-    const accountType = (subflow && "accountType" in subflow && subflow.accountType) || "RESIDENTIAL";
-    const resume = pendingPrompt(subflow, session.stage);
-    const rec = planRecommendationText(accountType);
-    return reply(ctx, resume ? `${rec} ${resume}` : `${rec} Would you like to sign up for one of these?`);
-  }
+  // A not-yet-verified caller asking about plans - either a recommendation ("what's the best plan") or
+  // the general catalog ("tell me your residential plans"). Regex first (PLAN_RECOMMEND_RE/
+  // PLANS_OR_SERVICES_RE, free and instant); classifyPlanQuestion() falls back to AI only when neither
+  // matched but the utterance plausibly mentions plans at all - real speech varies more than either regex
+  // can match (found live, Oct 4: "tell me uh, the residential plans that you have" and "what is the best
+  // residential plan to buy" both failed three times in a row on a real call before this fallback was
+  // added - filler words and inserted adjectives like "residential" broke both patterns). Excludes
+  // AUTHENTICATED (PLAN_CHANGE's own "what plans" keyword answers this there, personalized) and
+  // AWAITING_INTENT (user request, Oct 4: the very first turn must always identify the caller as
+  // existing/new before answering anything else, however the question is phrased).
+  if (session.stage !== "AUTHENTICATED" && session.stage !== "AWAITING_INTENT") {
+    const planKind = PLAN_RECOMMEND_RE.test(utterance)
+      ? "RECOMMEND"
+      : PLANS_OR_SERVICES_RE.test(utterance)
+        ? "CATALOG"
+        : await classifyPlanQuestion(utterance);
 
-  // Public catalog question, answerable with no account access - see PLANS_OR_SERVICES_RE above.
-  // Skipped once authenticated: PLAN_CHANGE's own "what plans" keyword already answers this there,
-  // personalized against the caller's current plan, which is strictly better than a generic answer.
-  if (session.stage !== "AUTHENTICATED" && PLANS_OR_SERVICES_RE.test(utterance)) {
-    const resume = pendingPrompt(subflow, session.stage);
-    return reply(ctx, resume ? `${plansAndServicesText()} ${resume}` : plansAndServicesText());
+    if (planKind === "RECOMMEND") {
+      const accountType = (subflow && "accountType" in subflow && subflow.accountType) || "RESIDENTIAL";
+      const resume = pendingPrompt(subflow, session.stage);
+      const rec = planRecommendationText(accountType, utterance);
+      const close = rec.singlePlan ? `Would you like to sign up for the ${rec.singlePlan} plan?` : "Would you like to sign up for one of these?";
+      return reply(ctx, resume ? `${rec.text} ${resume}` : `${rec.text} ${close}`);
+    }
+    if (planKind === "CATALOG") {
+      const resume = pendingPrompt(subflow, session.stage);
+      return reply(ctx, resume ? `${plansAndServicesText()} ${resume}` : `${plansAndServicesText()} Would you like to sign up for any of the plans?`);
+    }
   }
 
   // "I don't remember my account number/PIN" - only when that's exactly what was just asked (plain
@@ -453,7 +473,7 @@ async function verifyPinTurn(ctx: Ctx, customer: CustomerRow, pin: string): Prom
 // as a lighter identifier and hand off to a person who can look them up (user request, Sep 30).
 function forgotCredentials(ctx: Ctx): TurnResult {
   setSubflow(ctx.conversationId, { type: "FORGOT_CREDENTIALS_ZIP" });
-  return reply(ctx, "No problem, I can still get you to someone who can help. Could you tell me the ZIP code for your service address?");
+  return reply(ctx, "No problem, I can still get you to someone who can help. Can you please tell me your six-digit ZIP code?");
 }
 
 // Mid-call re-verification against a different account, without ending the call or repeating intent
@@ -592,7 +612,7 @@ async function handleIntent(ctx: Ctx, intent: Intent, utterance: string): Promis
 
     case "SERVICE_AVAILABILITY":
       setSubflow(ctx.conversationId, { type: "EXISTING_SERVICE_ZIP" });
-      return reply(ctx, "Sure, what ZIP code would you like me to check?");
+      return reply(ctx, "Sure. Can you please tell me your six-digit ZIP code?");
 
     case "AGENT_REQUEST":
       return agentRequested(ctx);
@@ -634,6 +654,27 @@ function plansAndServicesText(): string {
   return `${plans} ${services}`;
 }
 
+// Once a new customer's identification is settled (existing/new + residential/business both known, right
+// before asking for their ZIP), retain and answer whatever they originally opened the call asking about -
+// the same idea as afterVerified() does for an existing customer right after BAN+PIN, just at the
+// equivalent "we now know who we're talking to" moment for someone with no account to verify. Found live,
+// Oct 4: a caller opened with "tell me about your residential plans," which the ZIP question silently
+// buried - they had to ask three more times, all of which failed on top of that (see classifyPlanQuestion).
+// Only plan-related intents are answerable here; anything else (or nothing useful stored) just asks the
+// ZIP question plainly, same as before.
+async function newCustomerZipPrompt(ctx: Ctx, accountType: CustomerType): Promise<string> {
+  const ask = "Can you please tell me your six-digit ZIP code?";
+  // Re-checks the ORIGINAL utterance directly, the same way the universal plan-question check would have
+  // if it ran at AWAITING_INTENT (it deliberately doesn't - scenario 27). Doesn't rely on detected_intent:
+  // the keyword classifier stores PLAN_CHANGE, not PLAN_INFO, for "what plans do you have" (its own "what
+  // plans" literal match wins first), which would make an intent-based check miss this case entirely.
+  const firstUtterance = firstRequestText(ctx.conversationId);
+  const kind = PLAN_RECOMMEND_RE.test(firstUtterance) ? "RECOMMEND" : PLANS_OR_SERVICES_RE.test(firstUtterance) ? "CATALOG" : await classifyPlanQuestion(firstUtterance);
+  if (kind === "RECOMMEND") return `${planRecommendationText(accountType, firstUtterance).text} ${ask}`;
+  if (kind === "CATALOG") return `${plansAndServicesText()} ${ask}`;
+  return `Great. ${ask}`;
+}
+
 // What to re-ask after answering an out-of-flow question, so the caller's place in the sign-up or
 // verification flow isn't lost. Returns null for subflows/stages where a generic re-prompt would be
 // worse than none (e.g. mid-callback-scheduling) - the caller's next turn still resumes them normally.
@@ -645,17 +686,17 @@ function pendingPrompt(subflow: Subflow | null, stage: AuthStage): string | null
       case "ACCOUNT_TYPE":
         return subflow.forNew ? "Are you looking for residential or business service?" : "Is this a residential or a business account?";
       case "NEW_CUSTOMER_ZIP":
-        return "What ZIP code would you like service at?";
+        return "Can you please tell me your six-digit ZIP code?";
       case "NEW_CUSTOMER_OFFER":
         return "Would you like me to transfer you to sign up?";
       case "EXISTING_SERVICE_ZIP":
-        return "What ZIP code would you like me to check?";
+        return "Can you please tell me your six-digit ZIP code?";
       case "CONFIRM_BAN":
         return `Just to confirm, is your account number ${spokenDigits(subflow.ban)} right?`;
       case "CONFIRM_PIN":
         return `Just to confirm, is your PIN ${spokenDigits(subflow.pin)} right?`;
       case "FORGOT_CREDENTIALS_ZIP":
-        return "Could you tell me the ZIP code for your service address?";
+        return "Can you please tell me your six-digit ZIP code?";
       default:
         return null;
     }
@@ -808,7 +849,7 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       }
       if (accountType) {
         setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
-        return reply(ctx, "Great, what's the ZIP code where you'd like service?");
+        return reply(ctx, await newCustomerZipPrompt(ctx, accountType));
       }
       setSubflow(ctx.conversationId, { type: "ACCOUNT_TYPE", forNew: true });
       return reply(ctx, "Welcome! Are you looking for residential or business service?");
@@ -824,16 +865,31 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
         return reply(ctx, "Thanks. Now, can you tell me your account number? It's the BAN on your bill.");
       }
       setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_ZIP", accountType });
-      return reply(ctx, "Great, what's the ZIP code where you'd like service?");
+      return reply(ctx, await newCustomerZipPrompt(ctx, accountType));
     }
 
     case "NEW_CUSTOMER_ZIP": {
+      // ZIP is optional (user request, Oct 4 - "if they doesn't tell, doesn't matter, you can answer the
+      // customer's query" - then, separately, "it should just simply answer the customer's query and ask
+      // if there's anything else," not push a transfer offer the caller never asked for). Detected by
+      // meaning, not a fixed phrase list - reuses the same isForgotCredentials() judgment already used
+      // for BAN/PIN (Sep 30), since "I don't know my ZIP" is the same category of thing as "I don't know
+      // my account number." Clears the subflow with no further ask of its own - the existing universal
+      // checks (plan/service questions, "anything else", an explicit agent request, goodbye) already
+      // handle whatever the caller does next, exactly as they do at any other point in a call.
+      if (await isForgotCredentials(u)) {
+        setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_DONE" });
+        return reply(ctx, `No problem. ${ANYTHING_ELSE}`);
+      }
       const zip = extractZip(u);
-      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      if (!zip) return reply(ctx, "Sorry, I didn't catch that. Can you please tell me your six-digit ZIP code, or let me know if you'd rather skip it.");
       const kindLabel = sf.accountType === "BUSINESS" ? "business" : "residential";
       if (!isServiceAvailable(zip, sf.accountType)) {
-        setSubflow(ctx.conversationId, null);
-        return reply(ctx, `I'm sorry, Springfield Fiber ${kindLabel} service isn't available in ${zip} yet. ${fillTemplate(ctx.settings.closePrompt, ctx.settings)}`, { endCall: true });
+        // Offer a transfer instead of just ending the call (user request, Oct 4: "if it is not available
+        // in their area... would you like me to transfer to an agent to know more" - an agent may know
+        // about upcoming coverage or alternatives, so this isn't a dead end).
+        setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_OFFER", accountType: sf.accountType });
+        return reply(ctx, `I'm sorry, Springfield Fiber ${kindLabel} service isn't available in ${zip} yet. Would you like me to transfer you to an agent to learn more?`);
       }
       setSubflow(ctx.conversationId, { type: "NEW_CUSTOMER_OFFER", accountType: sf.accountType });
       return reply(ctx, `Good news, Springfield Fiber ${kindLabel} service is available in ${zip}. I can transfer you to get signed up. Would you like me to do that?`);
@@ -849,9 +905,24 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
       return newCustomerTransfer(ctx, sf.accountType);
     }
 
+    case "NEW_CUSTOMER_DONE": {
+      // Universal plan/service-question and agent-request checks already ran before handleSubflow was
+      // reached (top of advance()), so reaching here means neither matched. FAREWELL_RE is checked
+      // explicitly since the top-level check only runs when there's no active subflow at all.
+      if (isCancel(u) || FAREWELL_RE.test(u)) return closeCall(ctx);
+      return reply(ctx, `Sorry, I didn't quite catch that. ${ANYTHING_ELSE}`);
+    }
+
     case "EXISTING_SERVICE_ZIP": {
+      // Same "don't force it" treatment as NEW_CUSTOMER_ZIP (user request, Oct 4, generalized to every
+      // ZIP prompt, not just the new-customer one) - an authenticated caller who doesn't know/want to
+      // give a ZIP just gets a plain acknowledgment and the conversation continues, no loop.
+      if (await isForgotCredentials(u)) {
+        setSubflow(ctx.conversationId, null);
+        return reply(ctx, `No problem. ${ANYTHING_ELSE}`);
+      }
       const zip = extractZip(u);
-      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      if (!zip) return reply(ctx, "Sorry, I didn't catch that. Can you please tell me your six-digit ZIP code?");
       const customer = requireCustomer(ctx.session);
       const available = isServiceAvailable(zip, customer.customer_type);
       setSubflow(ctx.conversationId, null);
@@ -884,8 +955,16 @@ async function handleSubflow(ctx: Ctx, sf: Subflow): Promise<TurnResult> {
 
     case "FORGOT_CREDENTIALS_ZIP": {
       if (isCancel(u)) return cancelled();
+      // The ZIP here was only ever a bonus for the agent, not a blocker - the call was already headed to
+      // a handoff the moment the caller couldn't produce their account number/PIN. If they don't know
+      // this either, just transfer without it instead of looping (user request, Oct 4, generalized to
+      // every ZIP prompt).
+      if (await isForgotCredentials(u)) {
+        setSubflow(ctx.conversationId, null);
+        return escalationReply(ctx, "CREDENTIALS_FORGOTTEN");
+      }
       const zip = extractZip(u);
-      if (!zip) return reply(ctx, "Sorry, I didn't catch a ZIP code. Could you say the 5 digits again?");
+      if (!zip) return reply(ctx, "Sorry, I didn't catch that. Can you please tell me your six-digit ZIP code?");
       db.prepare(`UPDATE conversations SET zip_provided = @zip WHERE id = @cid`).run({ "@zip": zip, "@cid": ctx.conversationId });
       setSubflow(ctx.conversationId, null);
       return escalationReply(ctx, "CREDENTIALS_FORGOTTEN");

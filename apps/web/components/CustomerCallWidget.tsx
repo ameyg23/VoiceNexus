@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { fetchCustomerVoiceToken, fetchPublicVoiceToken } from "../lib/api";
 import { formatDuration } from "../lib/format";
+import { PhoneIcon, PhoneEndIcon, MicIcon } from "./icons";
 
 // Real WebRTC calling from the customer portal, straight to the care line's IVR (user request, Sep
 // 29 — supersedes the earlier "number only, no customer-scoped browser calling" decision). Mirrors
@@ -134,7 +135,10 @@ export function CustomerCallWidget({
 
   return (
     <div>
-      <p className="mt-1 text-3xl font-bold tabular-nums">{careLineNumber}</p>
+      {/* Hidden once the dial screen is open - redundant there and it was floating misaligned above the
+          phone card instead of relating to anything (user feedback, Oct 4, from a screenshot). Idle and
+          ended still show it, since that's the only place it's the only piece of information on offer. */}
+      {!live && <p className="mt-1 text-3xl font-bold tabular-nums">{careLineNumber}</p>}
 
       {error && <p className="mt-3 rounded-lg bg-red-500/20 px-3 py-2 text-xs text-white">{error}</p>}
 
@@ -145,36 +149,56 @@ export function CustomerCallWidget({
       )}
 
       {live && (
-        <div className="mt-4 rounded-xl bg-white/10 p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wide text-white/70">{PHASE_LABEL[phase]}</span>
-            <span className="text-lg font-semibold tabular-nums">{phase === "in-call" ? formatDuration(elapsed) : "00:00"}</span>
-          </div>
-          <p className="mt-1 h-5 text-sm tracking-widest text-white/70 tabular-nums">{digits}</p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {KEYS.map((k) => (
+        // A self-contained "phone card" rather than loose circles floating in the much wider marketing
+        // card around it (user feedback, Oct 4: centering alone still left dead space either side since
+        // the outer card is sized for the page section, not for a compact dial screen). The darker inset
+        // panel gives the call UI its own visual boundary, same idea as an actual phone's call screen.
+        // Widened and the keypad enlarged (user feedback, same day) so the panel doesn't look sparse.
+        <div className="mx-auto w-full max-w-sm rounded-2xl bg-black/15 p-6 ring-1 ring-white/10">
+          <div className="flex flex-col items-center text-center">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              {phase !== "in-call" && <span className="absolute inset-0 animate-ping rounded-full bg-white/20" />}
+              <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
+                <PhoneIcon className="h-6 w-6" />
+              </span>
+            </div>
+            <span className="mt-3 text-xs font-semibold uppercase tracking-wide text-white/70">{PHASE_LABEL[phase]}</span>
+            <span className="mt-1 text-2xl font-semibold tabular-nums">{phase === "in-call" ? formatDuration(elapsed) : "00:00"}</span>
+            <p className="mt-1 h-5 text-sm tracking-[0.3em] text-white/70 tabular-nums">{digits}</p>
+
+            <div className="mt-5 grid grid-cols-3 gap-4">
+              {KEYS.map((k) => (
+                <button
+                  key={k}
+                  onClick={() => press(k)}
+                  disabled={phase !== "in-call"}
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-lg font-medium text-white transition hover:bg-white/20 disabled:opacity-30"
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            {phase === "in-call" && <p className="mt-3 text-center text-[11px] text-white/50">Or use your keyboard: 0-9, *, #</p>}
+
+            <div className="mt-6 flex items-center gap-8">
               <button
-                key={k}
-                onClick={() => press(k)}
+                onClick={toggleMute}
                 disabled={phase !== "in-call"}
-                className="rounded-lg bg-white/10 py-2 text-sm font-medium text-white hover:bg-white/20 disabled:opacity-40"
+                aria-label={muted ? "Unmute" : "Mute"}
+                className={`flex h-14 w-14 items-center justify-center rounded-full border transition disabled:opacity-30 ${
+                  muted ? "border-white bg-white text-brand-700" : "border-white/30 text-white hover:bg-white/10"
+                }`}
               >
-                {k}
+                <MicIcon className="h-6 w-6" />
               </button>
-            ))}
-          </div>
-          {phase === "in-call" && <p className="mt-1 text-center text-[11px] text-white/60">Or use your keyboard: 0-9, *, #</p>}
-          <div className="mt-3 flex gap-2">
-            <button onClick={hangUp} className="btn flex-1 bg-red-600 py-2 text-sm text-white hover:bg-red-700">
-              Hang up
-            </button>
-            <button
-              onClick={toggleMute}
-              disabled={phase !== "in-call"}
-              className="btn border border-white/30 px-4 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-40"
-            >
-              {muted ? "Unmute" : "Mute"}
-            </button>
+              <button
+                onClick={hangUp}
+                aria-label="Hang up"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 text-white shadow-lg shadow-black/20 transition hover:bg-red-500 active:scale-95"
+              >
+                <PhoneEndIcon className="h-7 w-7" />
+              </button>
+            </div>
           </div>
         </div>
       )}

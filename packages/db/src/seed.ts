@@ -98,10 +98,11 @@ const employees = [
 ];
 
 // Demo-only website password, derived so it never needs looking up: first name, lowercased.
-// Service ZIPs (outage checks). 62704 has the seeded active outage (migration 005).
+// Service ZIPs (outage checks). 6 digits (migration 011) - 627040 has the seeded active outage
+// (migration 005, also updated to 6 digits by 011).
 const SERVICE_ZIPS: Record<string, string> = {
-  CUS001: "62701", CUS002: "62702", CUS003: "62703", CUS004: "62701", CUS005: "62702",
-  CUS006: "62703", CUS007: "62701", CUS008: "62704", CUS009: "62704",
+  CUS001: "627010", CUS002: "627020", CUS003: "627030", CUS004: "627010", CUS005: "627020",
+  CUS006: "627030", CUS007: "627010", CUS008: "627040", CUS009: "627040",
 };
 
 function portalPassword(name: string): string {
@@ -148,7 +149,7 @@ function main() {
         "@planName": c.planName,
         "@accountStatus": c.accountStatus,
         "@portalPasswordHash": bcrypt.hashSync(portalPassword(c.name), 10),
-        "@serviceZip": SERVICE_ZIPS[c.id] ?? "62701",
+        "@serviceZip": SERVICE_ZIPS[c.id] ?? "627010",
       });
     }
     db.exec("COMMIT");

@@ -295,19 +295,24 @@ export default function PortalAccountPage() {
           <span className="kicker">Customer support</span>
           <h2 className="mt-2 text-lg font-bold text-gray-900">Need help, {customer.name.split(" ")[0]}?</h2>
 
-          <div className="mt-4 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8">
-            <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/80">
-              <PhoneIcon className="h-4 w-4" /> Call customer care
-            </p>
+          {/* Two columns on larger screens - text on the left, the compact call widget on the right - so
+              the card's width is actually used instead of leaving dead space around a narrow dial pad
+              (user feedback, Oct 4). */}
+          <div className="mt-4 grid gap-6 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white shadow-sm sm:p-8 md:grid-cols-2 md:items-start">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/80">
+                <PhoneIcon className="h-4 w-4" /> Call customer care
+              </p>
+              <p className="mt-3 max-w-lg text-sm text-white/85">
+                Available any time. {activity?.assistantName ?? "Our assistant"} answers first and can check your balance, take a payment,
+                change your plan, book a technician or set up a callback. Ask for a live agent at any point and it'll transfer you with full
+                context.
+              </p>
+              <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/85">
+                Have your account number <span className="font-mono font-semibold">{customer.ban.replace(/^BAN/, "")}</span> and your 4-digit PIN ready.
+              </p>
+            </div>
             <CustomerCallWidget careLineNumber={activity?.careLineNumber ?? null} />
-            <p className="mt-3 max-w-lg text-sm text-white/85">
-              Available any time. {activity?.assistantName ?? "Our assistant"} answers first and can check your balance, take a payment,
-              change your plan, book a technician or set up a callback. Ask for a live agent at any point and it'll transfer you with full
-              context.
-            </p>
-            <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/85">
-              Have your account number <span className="font-mono font-semibold">{customer.ban.replace(/^BAN/, "")}</span> and your 4-digit PIN ready.
-            </p>
           </div>
 
           <div className="mt-6">

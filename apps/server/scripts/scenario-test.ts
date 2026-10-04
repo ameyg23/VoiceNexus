@@ -462,8 +462,8 @@ async function scenarios() {
     await call.say("is service available in my area");
     await call.say("new customer");
     await call.say("residential");
-    const zipReply = await call.say("62701");
-    expectText(zipReply, /available in 62701.*transfer you to get signed up/i, "confirms coverage and offers a transfer");
+    const zipReply = await call.say("627010");
+    expectText(zipReply, /available in 627010.*transfer you to get signed up/i, "confirms coverage and offers a transfer");
     const t = await call.say("yes");
     check("transfers to sign-up", t.transfer && t.endCall, JSON.stringify(t));
     expectText(t, /reference code is 3 0 0 0/i, "speaks the new-customer residential code");
@@ -471,16 +471,31 @@ async function scenarios() {
     check("escalation reason NEW_CUSTOMER_ENROLLMENT, no customer identified", e?.reason === "NEW_CUSTOMER_ENROLLMENT" && e.customer_id === null, JSON.stringify(e));
   }
 
-  console.log("\n18. New customer, business — not covered yet → polite close, no transfer");
+  console.log("\n18. New customer, business — not covered yet → offers a transfer to an agent instead of a dead end (Oct 4)");
   {
     const call = await Call.start();
     await call.say("do you serve my area");
     await call.say("new customer");
     await call.say("business");
-    const zipReply = await call.say("62706");
-    check("call ends without a transfer", zipReply.endCall === true && !zipReply.transfer, JSON.stringify(zipReply));
-    expectText(zipReply, /isn't available in 62706 yet/i, "tells the caller service isn't available there");
-    check("no escalation logged", !one(`SELECT 1 x FROM escalations WHERE conversation_id = ?`, call.id));
+    const zipReply = await call.say("627060");
+    check("doesn't end the call outright", !zipReply.endCall && !zipReply.transfer, JSON.stringify(zipReply));
+    expectText(zipReply, /isn't available in 627060 yet.*transfer you to an agent/i, "tells the caller service isn't available there, offers a transfer");
+    const declined = await call.say("no thanks");
+    check("declining just ends the call politely, no escalation", declined.endCall === true && !declined.transfer, JSON.stringify(declined));
+    check("no escalation logged when declined", !one(`SELECT 1 x FROM escalations WHERE conversation_id = ?`, call.id));
+  }
+
+  console.log("\n18b. Same, but accepts the transfer offer");
+  {
+    const call = await Call.start();
+    await call.say("do you serve my area");
+    await call.say("new customer");
+    await call.say("business");
+    await call.say("627060");
+    const t = await call.say("yes");
+    check("transfers once accepted", t.transfer && t.endCall, JSON.stringify(t));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check("escalation reason NEW_CUSTOMER_ENROLLMENT, business routing code", e?.reason === "NEW_CUSTOMER_ENROLLMENT" && e.routing_code === "3003", JSON.stringify(e));
   }
 
   console.log("\n19. Multi-account: verified caller switches to a different account mid-call");
@@ -632,7 +647,7 @@ async function scenarios() {
     const plansJson = await plansRes.json();
     check("GET /api/demo/plans needs no auth and returns the full catalog", plansRes.status === 200 && plansJson.plans.length === 10, JSON.stringify(plansJson).slice(0, 200));
 
-    const availRes = await fetch(`${BASE}/api/demo/service-availability?zip=62701&accountType=RESIDENTIAL`);
+    const availRes = await fetch(`${BASE}/api/demo/service-availability?zip=627010&accountType=RESIDENTIAL`);
     const availJson = await availRes.json();
     check("GET /api/demo/service-availability needs no auth and matches the phone flow's own lookup", availRes.status === 200 && availJson.available === true, JSON.stringify(availJson));
 
@@ -734,18 +749,18 @@ async function scenarios() {
     await call.say("residential");
     const asked = await call.say("I don't remember my account number");
     check("asks for a ZIP instead of retrying, no transfer yet", !asked.transfer && !asked.endCall, JSON.stringify(asked));
-    expectText(asked, /zip code for your service address/i, "ZIP prompt");
+    expectText(asked, /six-digit zip code/i, "ZIP prompt");
     const badZip = await call.say("somewhere in Springfield");
-    expectText(badZip, /didn't catch a zip code/i, "still needs 5 digits");
-    const final = await call.say("62701");
+    expectText(badZip, /didn't catch that.*six-digit zip code/i, "still needs 6 digits");
+    const final = await call.say("627010");
     check("transfers once the ZIP is given", final.transfer && final.endCall && final.authStatus !== "SUCCESS", JSON.stringify(final));
     expectText(final, /wasn't able to verify your account.*transfer you to a live agent/i, "unverified handoff wording");
     const conv = one(`SELECT zip_provided FROM conversations WHERE id = ?`, call.id);
-    check("ZIP recorded on the conversation", conv?.zip_provided === "62701", JSON.stringify(conv));
+    check("ZIP recorded on the conversation", conv?.zip_provided === "627010", JSON.stringify(conv));
     const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
     check(
       "escalation reason CREDENTIALS_FORGOTTEN, unverified, routed by the stated topic, ZIP in the attempted list",
-      e?.reason === "CREDENTIALS_FORGOTTEN" && e.verified === 0 && e.intent === "CHECK_BALANCE" && e.routing_code === "3020" && /gave ZIP code 62701/i.test(String(e?.attempted)),
+      e?.reason === "CREDENTIALS_FORGOTTEN" && e.verified === 0 && e.intent === "CHECK_BALANCE" && e.routing_code === "3020" && /gave ZIP code 627010/i.test(String(e?.attempted)),
       JSON.stringify(e)
     );
   }
@@ -759,11 +774,125 @@ async function scenarios() {
     await call.say("100001"); // Amara Okafor - found fine, PIN is the problem
     const asked = await call.say("I've forgotten my PIN");
     check("asks for a ZIP instead of retrying the PIN", !asked.transfer && !asked.endCall, JSON.stringify(asked));
-    expectText(asked, /zip code for your service address/i, "ZIP prompt");
-    const final = await call.say("62701");
+    expectText(asked, /six-digit zip code/i, "ZIP prompt");
+    const final = await call.say("627010");
     check("transfers unverified", final.transfer && final.endCall && final.authStatus !== "SUCCESS", JSON.stringify(final));
     const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
     check("escalation reason CREDENTIALS_FORGOTTEN, account number already on record", e?.reason === "CREDENTIALS_FORGOTTEN" && /gave account number BAN100001/i.test(String(e?.attempted)), JSON.stringify(e));
+  }
+
+  console.log("\n27. A plan/service question as the very first utterance must not be answered before identifying the caller (Oct 4)");
+  {
+    // Previously PLANS_OR_SERVICES_RE/PLAN_RECOMMEND_RE fired at AWAITING_INTENT too, so the caller got
+    // the catalog/recommendation immediately and was never asked existing-or-new. Both must now be
+    // skipped at the literal opening turn, however the question is phrased - the existing/new question
+    // always comes first, and only answered once that's been dealt with (see scenario 21, mid-flow).
+    const catalogCall = await Call.start();
+    const catalogFirst = await catalogCall.say("what plans do you have");
+    expectText(catalogFirst, /existing springfield fiber customer, or a new customer/i, "catalog question still asks existing/new first, doesn't answer immediately");
+    if (/internet plans|most popular|best value/i.test(catalogFirst.aiText)) throw new Error(`catalog question answered before identifying the caller: ${catalogFirst.aiText}`);
+
+    const recommendCall = await Call.start();
+    const recommendFirst = await recommendCall.say("is there a better plan for me");
+    expectText(recommendFirst, /existing springfield fiber customer, or a new customer/i, "recommendation question also still asks existing/new first");
+    if (/most popular|best value|would you like to sign up for one of these/i.test(recommendFirst.aiText)) throw new Error(`recommendation question answered before identifying the caller: ${recommendFirst.aiText}`);
+  }
+
+  console.log("\n28. New customer who doesn't know their ZIP isn't stuck looping or pushed a transfer they never asked for (Oct 4)");
+  {
+    // Corrected same day: declining ZIP should NOT push a transfer offer of its own - just acknowledge
+    // and ask "anything else," same as the caller declining anything else optional mid-call. A transfer
+    // only happens if they separately ask for one (the universal AGENT_RE check, unrelated to this flow).
+    const call = await Call.start();
+    await call.say("is service available in my area");
+    await call.say("new customer");
+    await call.say("residential");
+    const asked = await call.say("I don't remember my zip code");
+    check("doesn't claim coverage either way, no transfer pushed", !/available in|isn't available/i.test(asked.aiText) && !asked.transfer && !asked.endCall, JSON.stringify(asked));
+    expectText(asked, /no problem.*anything else/i, "acknowledges it plainly, asks if there's anything else - no need to explain it's optional");
+
+    // A plan question right after declining ZIP still gets answered normally, same as anywhere else pre-auth.
+    const plans = await call.say("what plans do you have");
+    expectText(plans, /internet plans/i, "still answers an ordinary question after declining the ZIP");
+
+    // Only an explicit agent request transfers - not the ZIP decline itself.
+    const t = await call.say("can I talk to a live agent");
+    check("transfers only once actually asked for an agent", t.transfer && t.endCall, JSON.stringify(t));
+    const e = one(`SELECT * FROM escalations WHERE conversation_id = ?`, call.id);
+    check("escalation reason CALLER_REQUESTED, no customer identified", e?.reason === "CALLER_REQUESTED" && e.customer_id === null, JSON.stringify(e));
+  }
+
+  console.log("\n29. Plan-recommendation closing line matches what was actually asked (Oct 4)");
+  {
+    // "Most popular" / "best value" / a bare "best" each point at one specific plan, so the follow-up
+    // names that plan; a generic "recommend a plan" has no single plan to point at, so it stays generic;
+    // the full-catalog "what plans do you have" question gets its own plural close, never a specific name.
+    // Each call is driven all the way to NEW_CUSTOMER_DONE (declines the ZIP) first - the only pre-auth
+    // state with no pending question of its own, so the sign-up close is what actually gets tested
+    // instead of a CUSTOMER_KIND/ACCOUNT_TYPE resume prompt masking it (as scenario 21 already covers).
+    async function newCustomerDone(): Promise<Call> {
+      const call = await Call.start();
+      await call.say("is service available in my area");
+      await call.say("new customer");
+      await call.say("residential");
+      await call.say("I don't know my zip code");
+      return call;
+    }
+
+    const popular = await newCustomerDone();
+    const popularReply = await popular.say("which plan is the most popular one");
+    expectText(popularReply, /most popular plan is fiber 500/i, "names the popular plan");
+    expectText(popularReply, /sign up for the fiber 500 plan\?/i, "closes with that specific plan by name");
+
+    const value = await newCustomerDone();
+    const valueReply = await value.say("what's the best value plan");
+    expectText(valueReply, /best value, there's fiber 1000/i, "names the best-value plan");
+    expectText(valueReply, /sign up for the fiber 1000 plan\?/i, "closes with that specific plan by name");
+
+    const bare = await newCustomerDone();
+    const bareReply = await bare.say("what's the best plan you have");
+    expectText(bareReply, /best value, there's fiber 1000/i, "a bare 'best' reads as best-value, not the combined pitch");
+    expectText(bareReply, /sign up for the fiber 1000 plan\?/i, "closes with that specific plan by name");
+
+    const generic = await newCustomerDone();
+    const genericReply = await generic.say("can you recommend a plan for me");
+    expectText(genericReply, /most popular plan is fiber 500.*best value, there's fiber 1000/i, "no specific aspect named, so both get mentioned");
+    expectText(genericReply, /sign up for one of these\?/i, "closes generically since no single plan was asked about");
+
+    const catalog = await newCustomerDone();
+    const catalogReply = await catalog.say("what plans do you have");
+    expectText(catalogReply, /sign up for any of the plans\?/i, "the full-catalog question closes with the plural, never names one plan");
+  }
+
+  console.log("\n30. New customer's opening plan question is retained and answered right before the ZIP ask, not silently dropped (Oct 4)");
+  {
+    // Real call found this live: a caller opened asking about residential plans, went through existing/
+    // new + residential, and the ZIP question just buried the original ask - they had to repeat it three
+    // more times, none of which worked either (see classifyPlanQuestion/scenario 29 above). This checks
+    // the retention half specifically: the plan answer must appear in the SAME turn as the ZIP question,
+    // not require a separate follow-up.
+    const catalogCall = await Call.start();
+    const catalogAsk = await catalogCall.say("what plans do you have");
+    expectText(catalogAsk, /existing springfield fiber customer, or a new customer/i, "still identifies the caller first (scenario 27)");
+    await catalogCall.say("new customer");
+    const zipTurn = await catalogCall.say("residential");
+    expectText(zipTurn, /internet plans/i, "answers the originally-asked catalog question");
+    expectText(zipTurn, /six-digit zip code/i, "still asks for the ZIP in the same turn");
+
+    const recommendCall = await Call.start();
+    await recommendCall.say("what's the best value plan you have");
+    await recommendCall.say("new customer");
+    const zipTurn2 = await recommendCall.say("business");
+    expectText(zipTurn2, /best value, there's business 1000/i, "answers the originally-asked recommendation question, business-scoped");
+    expectText(zipTurn2, /six-digit zip code/i, "still asks for the ZIP in the same turn");
+
+    // An opener unrelated to plans still gets a plain ZIP ask - nothing to retain, nothing invented.
+    const plainCall = await Call.start();
+    await plainCall.say("is service available in my area");
+    await plainCall.say("new customer");
+    const plainZip = await plainCall.say("residential");
+    check("no plan text invented when nothing plan-related was ever asked", !/internet plans|most popular|best value/i.test(plainZip.aiText), JSON.stringify(plainZip));
+    expectText(plainZip, /^great\. can you please tell me your six-digit zip code\?$/i, "plain ZIP ask, unchanged");
   }
 }
 
